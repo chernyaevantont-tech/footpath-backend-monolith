@@ -11,6 +11,7 @@ import { PlaceFilterDto } from '../../src/places/dto/place-filter.dto';
 import { PlaceStatus } from '../../src/places/entities/place.entity';
 import { ModerationAction } from '../../src/places/entities/place-moderation-log.entity';
 import { User, UserRole } from '../../src/auth/entities/user.entity';
+import { RecommendationsService } from '../../src/recommendations/recommendations.service';
 
 describe('PlacesService', () => {
   let service: PlacesService;
@@ -40,6 +41,10 @@ describe('PlacesService', () => {
     save: jest.fn(),
   };
 
+  const mockRecommendationsService = {
+    generateEmbedding: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -55,6 +60,10 @@ describe('PlacesService', () => {
         {
           provide: getRepositoryToken(PlaceModerationLog),
           useValue: mockModerationLogRepository,
+        },
+        {
+          provide: RecommendationsService,
+          useValue: mockRecommendationsService,
         },
       ],
     }).compile();

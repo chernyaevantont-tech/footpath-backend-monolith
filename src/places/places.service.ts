@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, Logger, UnauthorizedException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger, UnauthorizedException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, Raw } from 'typeorm';
 import { Place } from './entities/place.entity';
@@ -10,6 +10,8 @@ import { PlaceFilterDto } from './dto/place-filter.dto';
 import { PlaceStatus } from './entities/place.entity';
 import { ModerationAction } from './entities/place-moderation-log.entity';
 import { User, UserRole } from '../auth/entities/user.entity';
+import { RecommendationsService } from '../recommendations/recommendations.service';
+import { GenerateEmbeddingDto } from '../recommendations/dto/recommendation.dto';
 
 @Injectable()
 export class PlacesService {
@@ -22,6 +24,8 @@ export class PlacesService {
     private tagRepository: Repository<Tag>,
     @InjectRepository(PlaceModerationLog)
     private moderationLogRepository: Repository<PlaceModerationLog>,
+    @Inject(forwardRef(() => RecommendationsService))
+    private recommendationsService: RecommendationsService,
   ) {}
 
   async createPlace(createPlaceDto: CreatePlaceDto) {
@@ -173,7 +177,7 @@ export class PlacesService {
 
     place.status = PlaceStatus.APPROVED;
     place.moderatorId = moderatorId; // Track who approved it
-    await this.placeRepository.save(place);
+    const updatedPlace = await this.placeRepository.save(place);
 
     // Log the approval
     await this.logModerationAction(
@@ -183,7 +187,23 @@ export class PlacesService {
       reason || 'Place approved'
     );
 
-    return place;
+    // Generate embedding for the place after approval
+    try {
+      const generateEmbeddingDto: GenerateEmbeddingDto = {
+        placeId: place.id,
+        name: place.name,
+        description: place.description || '',
+        tags: place.tagIds || [],
+      };
+
+      await this.recommendationsService.generateEmbedding(generateEmbeddingDto);
+      this.logger.log(`Generated embedding for approved place: ${place.id}`);
+    } catch (error) {
+      // If embedding generation fails, don't fail the approval process
+      this.logger.error(`Failed to generate embedding for place ${place.id}: ${error.message}`);
+    }
+
+    return updatedPlace;
   }
 
   async rejectPlace(id: string, moderatorId: string, reason?: string) {
