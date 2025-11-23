@@ -113,6 +113,14 @@ The mobile application will have different UI flows based on user role:
 
 ### Core UI Components
 
+#### Login Screen
+- Email/username input field
+- Password input field
+- Login button with equal spacing between input fields and button
+- Registration link
+- Password reset link
+- UI spacing: Equal vertical spacing between email input, password input, and login button
+
 #### Map View
 - OpenStreetMap integration using OSMDroid
 - POI markers with different icons based on type
