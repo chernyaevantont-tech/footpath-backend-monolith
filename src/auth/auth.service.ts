@@ -11,6 +11,7 @@ import { PasswordUtil } from './utils/password.util';
 import { TokenUtil } from './utils/token.util';
 import { ConfigService } from '@nestjs/config';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { RedisService } from '../common/redis.service';
 
 @Injectable()
 export class AuthService {
@@ -23,6 +24,7 @@ export class AuthService {
     private passwordResetTokenRepository: Repository<PasswordResetToken>,
     private jwtService: JwtService,
     private configService: ConfigService,
+    private redisService: RedisService,
   ) {}
 
   async register(registerDto: RegisterDto): Promise<{ user: User; token: string }> {
@@ -73,6 +75,22 @@ export class AuthService {
     // Generate JWT token
     const token = this.generateToken(user);
 
+    // Store session information in Redis
+    const sessionData = {
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      loginTime: new Date().toISOString(),
+    };
+
+    // Use the JWT as the session key (we can extract user ID from the token)
+    // For session caching, we'll create a separate key for the session data
+    const sessionId = `session:${user.id}`;
+    const sessionTtl = 24 * 60 * 60; // 24 hours in seconds
+    await this.redisService.setJson(sessionId, sessionData, sessionTtl);
+
+    this.logger.log(`Session created for user ${user.id}, stored in Redis with TTL ${sessionTtl}s`);
+
     return { user, token };
   }
 
@@ -89,10 +107,39 @@ export class AuthService {
   }
 
   async getProfile(userId: string): Promise<User> {
-    return await this.userRepository.findOne({
+    // Try to get user data from cache first
+    const cacheKey = `user:profile:${userId}`;
+    const cachedUser = await this.redisService.getJson(cacheKey);
+
+    if (cachedUser) {
+      this.logger.log(`Cache hit for user profile: ${userId}`);
+      return cachedUser;
+    }
+
+    const user = await this.userRepository.findOne({
       where: { id: userId },
       select: ['id', 'email', 'role', 'createdAt', 'updatedAt'],
     });
+
+    // Cache the user profile for 1 hour
+    if (user) {
+      await this.redisService.setJson(cacheKey, user, 3600);
+    }
+
+    return user;
+  }
+
+  async getSessionData(userId: string): Promise<any | null> {
+    const sessionId = `session:${userId}`;
+    const sessionData = await this.redisService.getJson(sessionId);
+
+    if (sessionData) {
+      this.logger.log(`Session retrieved from Redis for user: ${userId}`);
+      return sessionData;
+    }
+
+    this.logger.log(`No session found in Redis for user: ${userId}`);
+    return null;
   }
 
   async updateProfile(userId: string, email: string): Promise<User> {
@@ -110,7 +157,13 @@ export class AuthService {
       user.email = email;
     }
 
-    return await this.userRepository.save(user);
+    const updatedUser = await this.userRepository.save(user);
+
+    // Clear the cached profile
+    const cacheKey = `user:profile:${userId}`;
+    await this.redisService.del(cacheKey);
+
+    return updatedUser;
   }
 
   async requestPasswordReset(requestPasswordResetDto: RequestPasswordResetDto): Promise<void> {
@@ -173,6 +226,24 @@ export class AuthService {
     // Remove the used reset token
     await this.passwordResetTokenRepository.remove(resetToken);
 
+    // Clear the cached profile after password change
+    const cacheKey = `user:profile:${user.id}`;
+    await this.redisService.del(cacheKey);
+
     this.logger.log(`Password reset completed for user ${user.id}`);
+  }
+
+  async logout(userId: string): Promise<boolean> {
+    // Remove session from Redis
+    const sessionId = `session:${userId}`;
+    const deleted = await this.redisService.del(sessionId);
+
+    if (deleted) {
+      this.logger.log(`Session deleted for user ${userId}`);
+    } else {
+      this.logger.log(`No session found to delete for user ${userId}`);
+    }
+
+    return deleted;
   }
 }

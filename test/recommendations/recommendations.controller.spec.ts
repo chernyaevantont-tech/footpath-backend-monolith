@@ -4,6 +4,7 @@ import { RecommendationsController } from '../../src/recommendations/recommendat
 import { RecommendationsService } from '../../src/recommendations/recommendations.service';
 import { Place, PlaceStatus } from '../../src/places/entities/place.entity';
 import { GetPlaceRecommendationsDto, GetPathRecommendationsDto } from '../../src/recommendations/dto/recommendation.dto';
+import { RedisService } from '../../src/common/redis.service';
 
 describe('RecommendationsController', () => {
   let controller: RecommendationsController;
@@ -22,6 +23,17 @@ describe('RecommendationsController', () => {
         {
           provide: RecommendationsService,
           useValue: mockRecommendationsService,
+        },
+        {
+          provide: RedisService,
+          useValue: {
+            getJson: jest.fn(),
+            setJson: jest.fn(),
+            del: jest.fn(),
+            get: jest.fn(),
+            set: jest.fn(),
+            exists: jest.fn(),
+          },
         },
       ],
     }).compile();

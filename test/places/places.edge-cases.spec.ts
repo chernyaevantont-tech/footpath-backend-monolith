@@ -13,6 +13,7 @@ import { PlaceStatus } from '../../src/places/entities/place.entity';
 import { ModerationAction } from '../../src/places/entities/place-moderation-log.entity';
 import { User, UserRole } from '../../src/auth/entities/user.entity';
 import { RecommendationsService } from '../../src/recommendations/recommendations.service';
+import { RedisService } from '../../src/common/redis.service';
 
 describe('PlacesService Edge Cases', () => {
   let service: PlacesService;
@@ -44,6 +45,15 @@ describe('PlacesService Edge Cases', () => {
     generateEmbedding: jest.fn(),
   };
 
+  const mockRedisService = {
+    getJson: jest.fn().mockResolvedValue(null), // Initially return null for cache misses
+    setJson: jest.fn().mockResolvedValue(true),
+    del: jest.fn().mockResolvedValue(true),
+    get: jest.fn().mockResolvedValue(null),
+    set: jest.fn().mockResolvedValue(true),
+    exists: jest.fn().mockResolvedValue(false),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -63,6 +73,10 @@ describe('PlacesService Edge Cases', () => {
         {
           provide: RecommendationsService,
           useValue: mockRecommendationsService,
+        },
+        {
+          provide: RedisService,
+          useValue: mockRedisService,
         },
       ],
     }).compile();

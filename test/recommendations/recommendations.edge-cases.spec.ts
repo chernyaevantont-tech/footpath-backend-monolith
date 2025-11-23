@@ -16,6 +16,7 @@ import { WalkStatus } from '../../src/walks/entities/walk.entity';
 import { GetPlaceRecommendationsDto, GenerateEmbeddingDto } from '../../src/recommendations/dto/recommendation.dto';
 import { PlacesService } from '../../src/places/places.service';
 import { MockEmbeddingGenerator } from '../../src/recommendations/recommendations.service';
+import { RedisService } from '../../src/common/redis.service';
 
 describe('RecommendationsService Edge Cases', () => {
   let service: RecommendationsService;
@@ -85,6 +86,17 @@ describe('RecommendationsService Edge Cases', () => {
         {
           provide: PlacesService,
           useValue: mockPlacesService,
+        },
+        {
+          provide: RedisService,
+          useValue: {
+            getJson: jest.fn(),
+            setJson: jest.fn(),
+            del: jest.fn(),
+            get: jest.fn(),
+            set: jest.fn(),
+            exists: jest.fn(),
+          },
         },
       ],
     }).compile();

@@ -12,6 +12,7 @@ import { ModerationAction } from './entities/place-moderation-log.entity';
 import { User, UserRole } from '../auth/entities/user.entity';
 import { RecommendationsService } from '../recommendations/recommendations.service';
 import { GenerateEmbeddingDto } from '../recommendations/dto/recommendation.dto';
+import { RedisService } from '../common/redis.service';
 
 @Injectable()
 export class PlacesService {
@@ -26,6 +27,7 @@ export class PlacesService {
     private moderationLogRepository: Repository<PlaceModerationLog>,
     @Inject(forwardRef(() => RecommendationsService))
     private recommendationsService: RecommendationsService,
+    private redisService: RedisService,
   ) {}
 
   async createPlace(createPlaceDto: CreatePlaceDto) {
@@ -58,6 +60,17 @@ export class PlacesService {
 
   async findPlaces(filterDto: PlaceFilterDto) {
     this.logger.log('Finding places with filters');
+
+    // Generate cache key from filter parameters
+    const filterKey = JSON.stringify(filterDto);
+    const cacheKey = `places:search:${filterKey}`;
+
+    // Try to get from cache first
+    const cachedResult = await this.redisService.getJson(cacheKey);
+    if (cachedResult) {
+      this.logger.log(`Cache hit for key: ${cacheKey}`);
+      return cachedResult;
+    }
 
     // Build query with filters
     const queryBuilder = this.placeRepository.createQueryBuilder('place');
@@ -102,7 +115,7 @@ export class PlacesService {
     // Execute query
     const [places, total] = await queryBuilder.getManyAndCount();
 
-    return {
+    const result = {
       data: places,
       meta: {
         page,
@@ -111,6 +124,12 @@ export class PlacesService {
         pages: Math.ceil(total / limit),
       },
     };
+
+    // Cache the result for 5 minutes (300 seconds)
+    await this.redisService.setJson(cacheKey, result, 300);
+    this.logger.log(`Results cached for key: ${cacheKey}`);
+
+    return result;
   }
 
   async getPlaceById(id: string) {

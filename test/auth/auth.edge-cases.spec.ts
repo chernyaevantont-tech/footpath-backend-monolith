@@ -12,6 +12,7 @@ import { LoginDto } from '../../src/auth/dto/login.dto';
 import { RequestPasswordResetDto, ResetPasswordDto } from '../../src/auth/dto/password-reset.dto';
 import { PasswordUtil } from '../../src/auth/utils/password.util';
 import { TokenUtil } from '../../src/auth/utils/token.util';
+import { RedisService } from '../../src/common/redis.service';
 
 // Mock bcrypt
 jest.mock('../../src/auth/utils/password.util');
@@ -45,6 +46,15 @@ describe('Authentication Module Edge Cases', () => {
     get: jest.fn(),
   };
 
+  const mockRedisService = {
+    getJson: jest.fn().mockResolvedValue(null), // Initially return null for cache misses
+    setJson: jest.fn().mockResolvedValue(true),
+    del: jest.fn().mockResolvedValue(true),
+    get: jest.fn().mockResolvedValue(null),
+    set: jest.fn().mockResolvedValue(true),
+    exists: jest.fn().mockResolvedValue(false),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -64,6 +74,10 @@ describe('Authentication Module Edge Cases', () => {
         {
           provide: ConfigService,
           useValue: mockConfigService,
+        },
+        {
+          provide: RedisService,
+          useValue: mockRedisService,
         },
       ],
     }).compile();

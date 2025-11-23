@@ -75,4 +75,13 @@ export class AuthController {
     await this.authService.resetPassword(resetPasswordDto);
     return { message: 'Password has been reset successfully.' };
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  async logout(@Request() req) {
+    this.logger.log(`Logout request for user ID: ${req.user.userId}`);
+    const success = await this.authService.logout(req.user.userId);
+    return { message: success ? 'Logged out successfully' : 'Logout completed' };
+  }
 }

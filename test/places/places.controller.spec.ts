@@ -12,6 +12,7 @@ import { ApprovePlaceDto } from '../../src/places/dto/approve-place.dto';
 import { PlaceStatus } from '../../src/places/entities/place.entity';
 import { ModerationAction } from '../../src/places/entities/place-moderation-log.entity';
 import { User, UserRole } from '../../src/auth/entities/user.entity';
+import { RedisService } from '../../src/common/redis.service';
 
 describe('PlacesController', () => {
   let controller: PlacesController;
@@ -27,6 +28,15 @@ describe('PlacesController', () => {
     validateModeratorAccess: jest.fn(),
   };
 
+  const mockRedisService = {
+    getJson: jest.fn().mockResolvedValue(null), // Initially return null for cache misses
+    setJson: jest.fn().mockResolvedValue(true),
+    del: jest.fn().mockResolvedValue(true),
+    get: jest.fn().mockResolvedValue(null),
+    set: jest.fn().mockResolvedValue(true),
+    exists: jest.fn().mockResolvedValue(false),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [PlacesController],
@@ -34,6 +44,10 @@ describe('PlacesController', () => {
         {
           provide: PlacesService,
           useValue: mockPlacesService,
+        },
+        {
+          provide: RedisService,
+          useValue: mockRedisService,
         },
       ],
     }).compile();
