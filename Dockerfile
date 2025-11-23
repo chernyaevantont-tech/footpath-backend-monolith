@@ -12,8 +12,8 @@ WORKDIR /usr/src/app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install all dependencies (both production and development)
+RUN npm ci
 
 # Copy source code
 COPY . .
@@ -33,18 +33,15 @@ WORKDIR /usr/src/app
 # Copy package files
 COPY package*.json ./
 
-# Copy production dependencies from builder stage
-COPY --from=builder /usr/src/app/node_modules ./node_modules
+# Install only production dependencies
+RUN npm ci --only=production
 
 # Copy built application from builder stage
 COPY --from=builder /usr/src/app/dist ./dist
 
-# Copy source files for debugging (optional, can be removed for smaller image)
-COPY --from=builder /usr/src/app/src ./src
-
-# Copy wait-for-it script
-COPY --from=builder /usr/src/app/wait-for-it.sh ./
-RUN chmod +x wait-for-it.sh
+# Copy wait-for-it script to /usr/local/bin to avoid being treated as a module
+COPY --from=builder /usr/src/app/wait-for-it.sh /usr/local/bin/wait-for-it.sh
+RUN chmod +x /usr/local/bin/wait-for-it.sh
 
 # Expose port
 EXPOSE 3000
