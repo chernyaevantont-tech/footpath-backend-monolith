@@ -155,3 +155,28 @@ footpath-backend-monolith/
     docker-compose up -d --build
     ```
 4.  API будет доступен по адресу `http://localhost:3000`.
+
+## Production Deployment
+
+Для развертывания в production-окружении выполните следующие шаги:
+
+1.  **Скопируйте файлы развертывания:**
+    ```bash
+    # Убедитесь, что у вас есть .env файл с production-параметрами
+    cp .env.example .env
+    # Отредактируйте .env файл с production-параметрами
+    ```
+
+2.  **Запустите сценарий production-развертывания:**
+    ```bash
+    ./setup-prod.sh
+    ```
+
+Или выполните вручную:
+```bash
+docker-compose -f docker-compose.prod.yml up -d --build
+```
+
+API будет доступен по адресу `http://your-server-ip:3000`, а документация API - по адресу `http://your-server-ip:3000/api/docs`.
+
+Для подробного руководства по развертыванию см. [DEPLOYMENT.md](DEPLOYMENT.md).

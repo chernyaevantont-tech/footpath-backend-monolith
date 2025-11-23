@@ -8,8 +8,11 @@ import {
   Request,
   HttpCode,
   HttpStatus,
-  Logger
+  Logger,
+  UseInterceptors,
+  ClassSerializerInterceptor
 } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -18,6 +21,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { User } from './entities/user.entity';
 import { UserProfileDto } from './dto/user-profile.dto';
 
+@ApiTags('Authentication')
 @Controller('auth')
 export class AuthController {
   private readonly logger = new Logger(AuthController.name);
@@ -26,6 +30,25 @@ export class AuthController {
 
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Register a new user' })
+  @ApiBody({ type: RegisterDto })
+  @ApiResponse({
+    status: 201,
+    description: 'User registered successfully',
+    schema: {
+      example: {
+        user: {
+          id: 'uuid-string',
+          email: 'user@example.com',
+          role: 'user',
+          createdAt: '2023-01-01T00:00:00.000Z',
+          updatedAt: '2023-01-01T00:00:00.000Z'
+        },
+        token: 'jwt-token-string'
+      }
+    }
+  })
+  @ApiResponse({ status: 400, description: 'Bad request (email already exists, weak password, etc.)' })
   async register(@Body() registerDto: RegisterDto) {
     this.logger.log(`Register attempt for email: ${registerDto.email}`);
     const result = await this.authService.register(registerDto);
@@ -35,6 +58,23 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Login user' })
+  @ApiBody({ type: LoginDto })
+  @ApiResponse({
+    status: 200,
+    description: 'User logged in successfully',
+    schema: {
+      example: {
+        user: {
+          id: 'uuid-string',
+          email: 'user@example.com',
+          role: 'user'
+        },
+        token: 'jwt-token-string'
+      }
+    }
+  })
+  @ApiResponse({ status: 401, description: 'Invalid credentials' })
   async login(@Body() loginDto: LoginDto) {
     this.logger.log(`Login attempt for email: ${loginDto.email}`);
     const result = await this.authService.login(loginDto);
@@ -45,6 +85,21 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Get('me')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get authenticated user profile' })
+  @ApiBearerAuth()
+  @ApiResponse({
+    status: 200,
+    description: 'User profile retrieved successfully',
+    schema: {
+      example: {
+        userId: 'uuid-string',
+        email: 'user@example.com',
+        role: 'user'
+      }
+    }
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @UseInterceptors(ClassSerializerInterceptor)
   async getProfile(@Request() req) {
     this.logger.log(`Get profile request for user ID: ${req.user.userId}`);
     return req.user;
@@ -53,6 +108,26 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Put('profile')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Update user profile' })
+  @ApiBearerAuth()
+  @ApiBody({ type: UserProfileDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Profile updated successfully',
+    schema: {
+      example: {
+        message: 'Profile updated successfully',
+        user: {
+          id: 'uuid-string',
+          email: 'updated@example.com',
+          role: 'user',
+          createdAt: '2023-01-01T00:00:00.000Z',
+          updatedAt: '2023-01-02T00:00:00.000Z'
+        }
+      }
+    }
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   async updateProfile(@Request() req, @Body() userProfileDto: UserProfileDto) {
     this.logger.log(`Update profile request for user ID: ${req.user.userId}`);
     const updatedUser = await this.authService.updateProfile(req.user.userId, userProfileDto.email);
@@ -62,6 +137,17 @@ export class AuthController {
 
   @Post('request-password-reset')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Request password reset' })
+  @ApiBody({ type: RequestPasswordResetDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Password reset request processed',
+    schema: {
+      example: {
+        message: 'If an account with that email exists, a reset link has been sent.'
+      }
+    }
+  })
   async requestPasswordReset(@Body() requestPasswordResetDto: RequestPasswordResetDto) {
     this.logger.log(`Password reset request for email: ${requestPasswordResetDto.email}`);
     await this.authService.requestPasswordReset(requestPasswordResetDto);
@@ -70,6 +156,18 @@ export class AuthController {
 
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reset password with token' })
+  @ApiBody({ type: ResetPasswordDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Password reset successfully',
+    schema: {
+      example: {
+        message: 'Password has been reset successfully.'
+      }
+    }
+  })
+  @ApiResponse({ status: 400, description: 'Invalid or expired reset token' })
   async resetPassword(@Body() resetPasswordDto: ResetPasswordDto) {
     this.logger.log(`Password reset attempt with token: ${resetPasswordDto.token.substring(0, 8)}...`);
     await this.authService.resetPassword(resetPasswordDto);
@@ -79,6 +177,18 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Post('logout')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Logout user' })
+  @ApiBearerAuth()
+  @ApiResponse({
+    status: 200,
+    description: 'User logged out successfully',
+    schema: {
+      example: {
+        message: 'Logged out successfully'
+      }
+    }
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   async logout(@Request() req) {
     this.logger.log(`Logout request for user ID: ${req.user.userId}`);
     const success = await this.authService.logout(req.user.userId);
