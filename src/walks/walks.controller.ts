@@ -13,6 +13,7 @@ import {
   Logger,
   Request
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { WalksService } from './walks.service';
 import { CreateWalkDto } from './dto/create-walk.dto';
@@ -21,6 +22,7 @@ import { InviteParticipantsDto } from './dto/invite-participants.dto';
 import { RespondToInvitationDto } from './dto/respond-to-invitation.dto';
 import { CompleteWalkDto } from './dto/complete-walk.dto';
 
+@ApiTags('Walks')
 @Controller('walks')
 export class WalksController {
   private readonly logger = new Logger(WalksController.name);

@@ -10,11 +10,13 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { NotificationsService } from './notifications.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateNotificationDto, UpdateNotificationDto, BulkReadNotificationsDto } from './dto/notification.dto';
 import { Notification } from './entities/notification.entity';
 
+@ApiTags('Notifications')
 @Controller('notifications')
 export class NotificationsController {
   private readonly logger = new Logger(NotificationsController.name);
