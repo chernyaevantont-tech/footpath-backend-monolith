@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AppInitializerService } from './app-initializer.service';
 import { AuthModule } from './auth/auth.module';
 import { PlacesModule } from './places/places.module';
 import { PathsModule } from './paths/paths.module';
@@ -19,7 +20,7 @@ import { RedisModule } from './common/redis.module';
       isGlobal: true,
       envFilePath: '.env',
     }),
-    
+
     // TypeORM configuration for PostgreSQL with PostGIS
     TypeOrmModule.forRoot({
       type: 'postgres',
@@ -37,7 +38,7 @@ import { RedisModule } from './common/redis.module';
         postgis: true,
       },
     }),
-    
+
     // Import all feature modules
     AuthModule,
     PlacesModule,
@@ -49,6 +50,6 @@ import { RedisModule } from './common/redis.module';
     RedisModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, AppInitializerService],
 })
 export class AppModule {}

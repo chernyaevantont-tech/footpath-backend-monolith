@@ -18,6 +18,8 @@ services:
       - NEO4J_PASSWORD=letmein123
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - DEFAULT_ADMIN_EMAIL=admin@footpath.com
+      - DEFAULT_ADMIN_PASSWORD=admin123
     depends_on:
       - postgres
       - neo4j

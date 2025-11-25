@@ -42,6 +42,10 @@ JWT_EXPIRES_IN=24h
 
 # Logging
 LOG_LEVEL=info
+
+# Default Admin User (these will be used to create a default admin user at startup)
+DEFAULT_ADMIN_EMAIL=admin@footpath.com
+DEFAULT_ADMIN_PASSWORD=your_secure_admin_password
 ```
 
 ## Production Deployment
@@ -100,6 +104,8 @@ The production-ready `docker-compose.yml` includes:
 | NEO4J_PASSWORD | Neo4j password | - (required) |
 | REDIS_HOST | Redis host | redis |
 | REDIS_PORT | Redis port | 6379 |
+| DEFAULT_ADMIN_EMAIL | Email for default admin user | admin@footpath.com |
+| DEFAULT_ADMIN_PASSWORD | Password for default admin user | - (recommended) |
 
 ## Scaling Recommendations
 
