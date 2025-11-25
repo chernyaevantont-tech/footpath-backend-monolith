@@ -30,9 +30,9 @@ export class AppInitializerService implements OnModuleInit {
 
       // Check if admin user already exists
       const existingAdmin = await this.userRepository.findOne({
-        where: { 
+        where: {
           email: defaultAdminEmail,
-          role: UserRole.ADMIN 
+          role: UserRole.ADMIN
         },
       });
 

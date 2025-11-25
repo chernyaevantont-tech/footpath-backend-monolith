@@ -3,7 +3,6 @@ import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { AppInitializerService } from './app-initializer.service';
 import { AuthModule } from './auth/auth.module';
 import { PlacesModule } from './places/places.module';
 import { PathsModule } from './paths/paths.module';
@@ -50,6 +49,6 @@ import { RedisModule } from './common/redis.module';
     RedisModule,
   ],
   controllers: [AppController],
-  providers: [AppService, AppInitializerService],
+  providers: [AppService],
 })
 export class AppModule {}

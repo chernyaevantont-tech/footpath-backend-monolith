@@ -8,6 +8,7 @@ import { User } from './entities/user.entity';
 import { PasswordResetToken } from './entities/password-reset-token.entity';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { AppInitializerService } from '../app-initializer.service';
 
 @Module({
   imports: [
@@ -24,7 +25,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
     RedisModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
-  exports: [AuthService],
+  providers: [AuthService, JwtStrategy, AppInitializerService],
+  exports: [AuthService, AppInitializerService],
 })
 export class AuthModule {}
