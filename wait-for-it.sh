@@ -49,11 +49,12 @@ wait_for()
 
 wait_for_wrapper()
 {
-    # In order to support SIGINT during timeout: http://unix.stackexchange.com/a/57692
-    if [[ $WAITFORIT_QUIET -eq 1 ]]; then
-        timeout $WAITFORIT_BUSYTIMEFLAG $WAITFORIT_TIMEOUT $0 --child --host=$WAITFORIT_HOST --port=$WAITFORIT_PORT --timeout=$WAITFORIT_TIMEOUT &
+    if [[ $WAITFORIT_ISBUSY -eq 1 ]]; then
+        # Use busybox style timeout (no -t flag)
+        timeout $WAITFORIT_TIMEOUT $0 --child --host=$WAITFORIT_HOST --port=$WAITFORIT_PORT --timeout=$WAITFORIT_TIMEOUT &
     else
-        timeout $WAITFORIT_BUSYTIMEFLAG $WAITFORIT_TIMEOUT $0 --child --host=$WAITFORIT_HOST --port=$WAITFORIT_PORT --timeout=$WAITFORIT_TIMEOUT & echo $!
+        # Use GNU style timeout
+        timeout $WAITFORIT_BUSYTIMEFLAG $WAITFORIT_TIMEOUT $0 --child --host=$WAITFORIT_HOST --port=$WAITFORIT_PORT --timeout=$WAITFORIT_TIMEOUT &
     fi
     WAITFORIT_PID=$!
     trap "kill -INT -$WAITFORIT_PID" INT
@@ -136,13 +137,13 @@ WAITFORIT_CHILD=${WAITFORIT_CHILD:-0}
 WAITFORIT_QUIET=${WAITFORIT_QUIET:-0}
 
 # Check to see if timeout is from busybox?
-WAITFORIT_TIMEOUT_PATH=$(realpath $(which timeout))
-if [[ $WAITFORIT_TIMEOUT_PATH =~ "busybox" ]]; then
+WAITFORIT_TIMEOUT_PATH=$(realpath $(which timeout) 2>/dev/null || which timeout)
+if [[ -n "$WAITFORIT_TIMEOUT_PATH" && "$WAITFORIT_TIMEOUT_PATH" =~ "busybox" ]]; then
         WAITFORIT_ISBUSY=1
-        WAITFORIT_BUSYTIMEFLAG="-t"
+        WAITFORIT_BUSYTIMEFLAG=""
 else
         WAITFORIT_ISBUSY=0
-        WAITFORIT_BUSYTIMEFLAG=""
+        WAITFORIT_BUSYTIMEFLAG="-t"
 fi
 
 if [[ $WAITFORIT_CHILD -gt 0 ]]; then

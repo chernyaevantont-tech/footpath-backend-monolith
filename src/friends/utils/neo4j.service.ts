@@ -9,10 +9,13 @@ export class Neo4jService {
 
   constructor(private configService: ConfigService) {
     const neo4jUri = this.configService.get<string>('NEO4J_URI') || 'bolt://localhost:7687';
-    const neo4jUser = this.configService.get<string>('NEO4J_USER') || 'neo4j';
+    const neo4jUsername = this.configService.get<string>('NEO4J_USERNAME') || 'neo4j';
     const neo4jPassword = this.configService.get<string>('NEO4J_PASSWORD') || 'password';
 
-    this.driver = neo4j.driver(neo4jUri, neo4j.auth.basic(neo4jUser, neo4jPassword));
+    this.driver = neo4j.driver(neo4jUri, neo4j.auth.basic(neo4jUsername, neo4jPassword), {
+      // Disable encryption for local development
+      encrypted: 'ENCRYPTION_OFF',
+    });
   }
 
   getClient(): neo4j.Driver {

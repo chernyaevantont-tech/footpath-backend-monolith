@@ -32,6 +32,9 @@ import { RedisModule } from './common/redis.module';
       synchronize: process.env.NODE_ENV !== 'production', // Only for development
       autoLoadEntities: true,
       logging: process.env.NODE_ENV === 'development',
+      retryAttempts: 10,
+      retryDelay: 3000,
+      keepConnectionAlive: true,
       extra: {
         // Enable PostGIS extension
         postgis: true,
