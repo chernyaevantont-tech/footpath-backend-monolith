@@ -51,8 +51,8 @@ export class RecommendationsController {
     @Request() req,
     @Query() query: GetPlaceRecommendationsDto,
   ): Promise<Place[]> {
-    this.logger.log(`Get place recommendations request for user ID: ${req.user.userId}`);
-    const userId = req.user.userId;
+    this.logger.log(`Get place recommendations request for user ID: ${req.user.id}`);
+    const userId = req.user.id;
 
     // If userId is not explicitly provided in query, use the authenticated user's id
     const targetUserId = query.userId || userId;
@@ -105,8 +105,8 @@ export class RecommendationsController {
     @Request() req,
     @Query() query: GetPathRecommendationsDto,
   ): Promise<any[]> { // Using any[] as placeholder type
-    this.logger.log(`Get path recommendations request for user ID: ${req.user.userId}`);
-    const userId = req.user.userId;
+    this.logger.log(`Get path recommendations request for user ID: ${req.user.id}`);
+    const userId = req.user.id;
 
     const targetUserId = query.userId || userId;
     if (targetUserId !== userId) {
@@ -135,12 +135,12 @@ export class RecommendationsController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Forbidden - insufficient permissions' })
   async generateAllEmbeddings(@Request() req): Promise<{ processed: number }> {
-    this.logger.log(`Generate all embeddings request by user ID: ${req.user.userId}`);
+    this.logger.log(`Generate all embeddings request by user ID: ${req.user.id}`);
 
     // This endpoint should probably be restricted to admin users
     // For now, just log the action
     if (req.user.role !== 'admin') {
-      this.logger.warn(`Non-admin user ${req.user.userId} with role ${req.user.role} attempted to generate all embeddings`);
+      this.logger.warn(`Non-admin user ${req.user.id} with role ${req.user.role} attempted to generate all embeddings`);
     }
 
     const processed = await this.recommendationsService.generateEmbeddingsForAllPlaces();

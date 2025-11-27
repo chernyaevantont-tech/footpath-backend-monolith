@@ -5,11 +5,12 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { AuthService } from '../../src/auth/auth.service';
-import { User } from '../../src/auth/entities/user.entity';
+import { User, UserRole } from '../../src/auth/entities/user.entity';
 import { PasswordResetToken } from '../../src/auth/entities/password-reset-token.entity';
 import { RegisterDto } from '../../src/auth/dto/register.dto';
 import { LoginDto } from '../../src/auth/dto/login.dto';
 import { RequestPasswordResetDto, ResetPasswordDto } from '../../src/auth/dto/password-reset.dto';
+import { RegisterModeratorDto } from '../../src/auth/dto/register-moderator.dto';
 import { PasswordUtil } from '../../src/auth/utils/password.util';
 import { TokenUtil } from '../../src/auth/utils/token.util';
 import { RedisService } from '../../src/common/redis.service';
@@ -378,6 +379,114 @@ describe('AuthService', () => {
 
       await expect(service.resetPassword(resetPasswordDto)).rejects.toThrow(BadRequestException);
       expect(passwordResetTokenRepository.remove).toHaveBeenCalledWith(expiredResetToken);
+    });
+  });
+
+  describe('registerModerator', () => {
+    it('should successfully register a moderator', async () => {
+      const registerModeratorDto = {
+        email: 'moderator@example.com',
+        password: 'password123',
+        role: UserRole.MODERATOR,
+      };
+
+      const newUser = {
+        id: '1',
+        email: registerModeratorDto.email,
+        password: 'hashed_password',
+        role: registerModeratorDto.role,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      (userRepository.findOne as jest.Mock).mockResolvedValue(null);
+      (userRepository.save as jest.Mock).mockResolvedValue(newUser);
+      (PasswordUtil.hash as jest.Mock).mockResolvedValue('hashed_password');
+      (jwtService.sign as jest.Mock).mockReturnValue('jwt_token');
+      (mockConfigService.get as jest.Mock).mockReturnValue('default_secret');
+
+      const result = await service.registerModerator(registerModeratorDto);
+
+      expect(userRepository.findOne).toHaveBeenCalledWith({ where: { email: registerModeratorDto.email } });
+      expect(PasswordUtil.hash).toHaveBeenCalledWith(registerModeratorDto.password);
+      expect(userRepository.save).toHaveBeenCalledWith(expect.objectContaining({
+        email: registerModeratorDto.email,
+        password: 'hashed_password',
+        role: 'moderator',
+      }));
+      expect(jwtService.sign).toHaveBeenCalled();
+      expect(result).toEqual({ user: newUser, token: 'jwt_token' });
+    });
+
+    it('should successfully register an admin', async () => {
+      const registerModeratorDto = {
+        email: 'admin@example.com',
+        password: 'password123',
+        role: UserRole.ADMIN,
+      };
+
+      const newUser = {
+        id: '2',
+        email: registerModeratorDto.email,
+        password: 'hashed_password',
+        role: registerModeratorDto.role,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      (userRepository.findOne as jest.Mock).mockResolvedValue(null);
+      (userRepository.save as jest.Mock).mockResolvedValue(newUser);
+      (PasswordUtil.hash as jest.Mock).mockResolvedValue('hashed_password');
+      (jwtService.sign as jest.Mock).mockReturnValue('jwt_token');
+      (mockConfigService.get as jest.Mock).mockReturnValue('default_secret');
+
+      const result = await service.registerModerator(registerModeratorDto);
+
+      expect(userRepository.findOne).toHaveBeenCalledWith({ where: { email: registerModeratorDto.email } });
+      expect(PasswordUtil.hash).toHaveBeenCalledWith(registerModeratorDto.password);
+      expect(userRepository.save).toHaveBeenCalledWith(expect.objectContaining({
+        email: registerModeratorDto.email,
+        password: 'hashed_password',
+        role: 'admin',
+      }));
+      expect(jwtService.sign).toHaveBeenCalled();
+      expect(result).toEqual({ user: newUser, token: 'jwt_token' });
+    });
+
+    it('should throw BadRequestException if user already exists', async () => {
+      const registerModeratorDto = {
+        email: 'moderator@example.com',
+        password: 'password123',
+        role: UserRole.MODERATOR,
+      };
+
+      (userRepository.findOne as jest.Mock).mockResolvedValue({
+        id: '1',
+        email: registerModeratorDto.email,
+      });
+
+      await expect(service.registerModerator(registerModeratorDto)).rejects.toThrow(BadRequestException);
+      expect(userRepository.findOne).toHaveBeenCalledWith({ where: { email: registerModeratorDto.email } });
+    });
+
+    it('should throw BadRequestException if invalid role is provided', async () => {
+      const registerModeratorDto = {
+        email: 'invalid@example.com',
+        password: 'password123',
+        role: 'invalid_role',
+      } as any;
+
+      await expect(service.registerModerator(registerModeratorDto)).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException if password is too short', async () => {
+      const registerModeratorDto = {
+        email: 'moderator@example.com',
+        password: '123', // Too short
+        role: UserRole.MODERATOR,
+      };
+
+      await expect(service.registerModerator(registerModeratorDto)).rejects.toThrow(BadRequestException);
     });
   });
 });

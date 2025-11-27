@@ -1,0 +1,22 @@
+FROM postgis/postgis:15-3.3
+
+# Install pgvector
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    build-essential \
+    postgresql-server-dev-15 \
+    git \
+    clang-11 \
+    llvm-11-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Download and install pgvector
+RUN git clone --depth 1 https://github.com/pgvector/pgvector.git && \
+    cd pgvector && \
+    make && \
+    make install && \
+    cd .. && \
+    rm -rf pgvector
+
+# Switch back to the default postgres user
+USER postgres

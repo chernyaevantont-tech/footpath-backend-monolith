@@ -147,4 +147,118 @@ describe('AuthController (e2e)', () => {
         .expect(200);
     });
   });
+
+  describe('/auth/register-moderator (POST) - Integration Tests', () => {
+    let adminToken: string;
+
+    beforeAll(async () => {
+      // Login with the default admin user created by the app initializer
+      const defaultAdminEmail = process.env.DEFAULT_ADMIN_EMAIL || 'admin@footpath.com';
+      const defaultAdminPassword = process.env.DEFAULT_ADMIN_PASSWORD || 'admin123';
+
+      const loginResponse = await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({
+          email: defaultAdminEmail,
+          password: defaultAdminPassword,
+        })
+        .expect(200);
+
+      adminToken = loginResponse.body.token;
+    });
+
+    it('should allow admin to register a new moderator', () => {
+      return request(app.getHttpServer())
+        .post('/auth/register-moderator')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          email: 'newmoderator@example.com',
+          password: 'modPassword123',
+          role: 'moderator'
+        })
+        .expect(201)
+        .then(response => {
+          expect(response.body).toHaveProperty('user');
+          expect(response.body).toHaveProperty('token');
+          expect(response.body.user.email).toBe('newmoderator@example.com');
+          expect(response.body.user.role).toBe('moderator');
+        });
+    });
+
+    it('should allow admin to register a new admin', () => {
+      return request(app.getHttpServer())
+        .post('/auth/register-moderator')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          email: 'anotheradmin@example.com',
+          password: 'adminPassword123',
+          role: 'admin'
+        })
+        .expect(201)
+        .then(response => {
+          expect(response.body).toHaveProperty('user');
+          expect(response.body).toHaveProperty('token');
+          expect(response.body.user.email).toBe('anotheradmin@example.com');
+          expect(response.body.user.role).toBe('admin');
+        });
+    });
+
+    it('should return 403 when non-admin tries to register moderator', async () => {
+      // Login as a regular user
+      const userTokenResponse = await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({
+          email: testUser.email,
+          password: testUser.password,
+        })
+        .expect(200);
+
+      const userToken = userTokenResponse.body.token;
+
+      return request(app.getHttpServer())
+        .post('/auth/register-moderator')
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({
+          email: 'unauthorized@example.com',
+          password: 'password123',
+          role: 'moderator'
+        })
+        .expect(403);
+    });
+
+    it('should return 401 when no token is provided', () => {
+      return request(app.getHttpServer())
+        .post('/auth/register-moderator')
+        .send({
+          email: 'notoken@example.com',
+          password: 'password123',
+          role: 'moderator'
+        })
+        .expect(401);
+    });
+
+    it('should return 400 when invalid role is provided', () => {
+      return request(app.getHttpServer())
+        .post('/auth/register-moderator')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          email: 'invalidrole@example.com',
+          password: 'password123',
+          role: 'invalid_role'
+        })
+        .expect(400);
+    });
+
+    it('should return 400 when password is too short', () => {
+      return request(app.getHttpServer())
+        .post('/auth/register-moderator')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          email: 'shortpass@example.com',
+          password: '123',
+          role: 'moderator'
+        })
+        .expect(400);
+    });
+  });
 });

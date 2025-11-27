@@ -2,11 +2,12 @@ import { Injectable, UnauthorizedException, BadRequestException, Logger } from '
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { User } from './entities/user.entity';
+import { User, UserRole } from './entities/user.entity';
 import { PasswordResetToken } from './entities/password-reset-token.entity';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RequestPasswordResetDto, ResetPasswordDto } from './dto/password-reset.dto';
+import { RegisterModeratorDto } from './dto/register-moderator.dto';
 import { PasswordUtil } from './utils/password.util';
 import { TokenUtil } from './utils/token.util';
 import { ConfigService } from '@nestjs/config';
@@ -231,6 +232,42 @@ export class AuthService {
     await this.redisService.del(cacheKey);
 
     this.logger.log(`Password reset completed for user ${user.id}`);
+  }
+
+  async registerModerator(registerModeratorDto: RegisterModeratorDto): Promise<{ user: User; token: string }> {
+    const { email, password, role } = registerModeratorDto;
+
+    // Validate that the role is either MODERATOR or ADMIN
+    if (role !== UserRole.MODERATOR && role !== UserRole.ADMIN) {
+      throw new BadRequestException('Role must be either "moderator" or "admin"');
+    }
+
+    // Validate password strength
+    if (password.length < 6) {
+      throw new BadRequestException('Password must be at least 6 characters long');
+    }
+
+    // Check if user already exists
+    const existingUser = await this.userRepository.findOne({ where: { email } });
+    if (existingUser) {
+      throw new BadRequestException('User with this email already exists');
+    }
+
+    // Hash password
+    const hashedPassword = await PasswordUtil.hash(password);
+
+    // Create new user with specified role
+    const user = new User();
+    user.email = email;
+    user.password = hashedPassword;
+    user.role = role;
+
+    const savedUser = await this.userRepository.save(user);
+
+    // Generate JWT token
+    const token = this.generateToken(savedUser);
+
+    return { user: savedUser, token };
   }
 
   async logout(userId: string): Promise<boolean> {

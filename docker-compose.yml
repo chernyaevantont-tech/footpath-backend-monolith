@@ -18,6 +18,8 @@ services:
       - NEO4J_PASSWORD=letmein123
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - JWT_SECRET=your_jwt_secret_key_change_this_in_production
+      - JWT_EXPIRES_IN=24h
       - DEFAULT_ADMIN_EMAIL=admin@footpath.com
       - DEFAULT_ADMIN_PASSWORD=admin123
     depends_on:
@@ -27,9 +29,11 @@ services:
     entrypoint: ["/usr/local/bin/wait-for-it.sh", "postgres:5432", "neo4j:7687", "redis:6379", "--"]
     command: ["node", "dist/main.js"]
 
-  # PostgreSQL with PostGIS
+  # PostgreSQL with PostGIS and pgvector
   postgres:
-    image: postgis/postgis:15-3.3
+    build:
+      context: .
+      dockerfile: Dockerfile.db
     ports:
       - "5432:5432"
     environment:
@@ -52,7 +56,9 @@ services:
       - "7687:7687"
     environment:
       - NEO4J_AUTH=neo4j/letmein123
-      - NEO4J_dbms_security_auth__enabled=false
+      - NEO4J_server_default__listen__address=0.0.0.0
+      - NEO4J_server_http_advertised__address=localhost:7474
+      - NEO4J_server_bolt_advertised__address=localhost:7687
     volumes:
       - neo4j_data:/data
       - neo4j_logs:/logs
@@ -60,9 +66,10 @@ services:
       - neo4j_plugins:/plugins
     healthcheck:
       test: ["CMD-SHELL", "wget --quiet --tries=1 --spider localhost:7474 || exit 1"]
-      interval: 5s
-      timeout: 3s
+      interval: 10s
+      timeout: 5s
       retries: 5
+      start_period: 30s
 
   # Redis for caching and sessions
   redis:

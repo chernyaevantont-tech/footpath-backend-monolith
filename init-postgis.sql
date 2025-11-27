@@ -2,5 +2,5 @@
 CREATE EXTENSION IF NOT EXISTS postgis;
 CREATE EXTENSION IF NOT EXISTS postgis_topology;
 
--- Create pgvector extension if available
+-- Enable pgvector extension (requires pgvector-compatible image)
 CREATE EXTENSION IF NOT EXISTS vector;

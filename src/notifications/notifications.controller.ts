@@ -27,9 +27,9 @@ export class NotificationsController {
   @Get()
   @HttpCode(HttpStatus.OK)
   async getUserNotifications(@Request() req): Promise<Notification[]> {
-    this.logger.log(`Get notifications request for user ID: ${req.user.userId}`);
-    const notifications = await this.notificationsService.getUserNotifications(req.user.userId);
-    this.logger.log(`Returned ${notifications.length} notifications for user ID: ${req.user.userId}`);
+    this.logger.log(`Get notifications request for user ID: ${req.user.id}`);
+    const notifications = await this.notificationsService.getUserNotifications(req.user.id);
+    this.logger.log(`Returned ${notifications.length} notifications for user ID: ${req.user.id}`);
     return notifications;
   }
 
@@ -37,9 +37,9 @@ export class NotificationsController {
   @Post(':id/read')
   @HttpCode(HttpStatus.OK)
   async markAsRead(@Param('id') id: string, @Request() req): Promise<Notification> {
-    this.logger.log(`Mark notification as read request for notification ID: ${id}, user ID: ${req.user.userId}`);
-    const notification = await this.notificationsService.markAsRead(id, req.user.userId);
-    this.logger.log(`Notification ${id} marked as read for user ID: ${req.user.userId}`);
+    this.logger.log(`Mark notification as read request for notification ID: ${id}, user ID: ${req.user.id}`);
+    const notification = await this.notificationsService.markAsRead(id, req.user.id);
+    this.logger.log(`Notification ${id} marked as read for user ID: ${req.user.id}`);
     return notification;
   }
 
@@ -47,9 +47,9 @@ export class NotificationsController {
   @Post('bulk-read')
   @HttpCode(HttpStatus.OK)
   async bulkMarkAsRead(@Body() bulkReadDto: BulkReadNotificationsDto, @Request() req): Promise<{ affected: number }> {
-    this.logger.log(`Bulk mark as read request for ${bulkReadDto.notificationIds.length} notifications, user ID: ${req.user.userId}`);
-    const affected = await this.notificationsService.bulkMarkAsRead(bulkReadDto, req.user.userId);
-    this.logger.log(`Bulk marked ${affected} notifications as read for user ID: ${req.user.userId}`);
+    this.logger.log(`Bulk mark as read request for ${bulkReadDto.notificationIds.length} notifications, user ID: ${req.user.id}`);
+    const affected = await this.notificationsService.bulkMarkAsRead(bulkReadDto, req.user.id);
+    this.logger.log(`Bulk marked ${affected} notifications as read for user ID: ${req.user.id}`);
     return { affected };
   }
 
@@ -57,9 +57,9 @@ export class NotificationsController {
   @Post('mark-all-read')
   @HttpCode(HttpStatus.OK)
   async markAllAsRead(@Request() req): Promise<{ affected: number }> {
-    this.logger.log(`Mark all notifications as read request for user ID: ${req.user.userId}`);
-    const affected = await this.notificationsService.markAllAsRead(req.user.userId);
-    this.logger.log(`Marked ${affected} notifications as read for user ID: ${req.user.userId}`);
+    this.logger.log(`Mark all notifications as read request for user ID: ${req.user.id}`);
+    const affected = await this.notificationsService.markAllAsRead(req.user.id);
+    this.logger.log(`Marked ${affected} notifications as read for user ID: ${req.user.id}`);
     return { affected };
   }
 }

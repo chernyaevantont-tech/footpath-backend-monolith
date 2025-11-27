@@ -10,15 +10,20 @@ import {
   HttpStatus,
   Logger,
   UseInterceptors,
-  ClassSerializerInterceptor
+  ClassSerializerInterceptor,
+  UsePipes,
+  ValidationPipe
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RequestPasswordResetDto, ResetPasswordDto } from './dto/password-reset.dto';
+import { RegisterModeratorDto } from './dto/register-moderator.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { User } from './entities/user.entity';
+import { RolesGuard } from './guards/roles.guard';
+import { Roles } from './decorators/roles.decorator';
+import { User, UserRole } from './entities/user.entity';
 import { UserProfileDto } from './dto/user-profile.dto';
 
 @ApiTags('Authentication')
@@ -85,13 +90,17 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Get('me')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Get authenticated user profile' })
+  @ApiOperation({
+    summary: 'Get authenticated user profile',
+    security: [{ 'access-token': [] }]
+  })
   @ApiBearerAuth()
   @ApiResponse({
     status: 200,
     description: 'User profile retrieved successfully',
     schema: {
       example: {
+        id: 'uuid-string',
         userId: 'uuid-string',
         email: 'user@example.com',
         role: 'user'
@@ -99,9 +108,8 @@ export class AuthController {
     }
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @UseInterceptors(ClassSerializerInterceptor)
   async getProfile(@Request() req) {
-    this.logger.log(`Get profile request for user ID: ${req.user.userId}`);
+    this.logger.log(`Get profile request for user ID: ${req.user.id}`);
     return req.user;
   }
 
@@ -129,9 +137,9 @@ export class AuthController {
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async updateProfile(@Request() req, @Body() userProfileDto: UserProfileDto) {
-    this.logger.log(`Update profile request for user ID: ${req.user.userId}`);
-    const updatedUser = await this.authService.updateProfile(req.user.userId, userProfileDto.email);
-    this.logger.log(`Profile updated successfully for user ID: ${req.user.userId}`);
+    this.logger.log(`Update profile request for user ID: ${req.user.id}`);
+    const updatedUser = await this.authService.updateProfile(req.user.id, userProfileDto.email);
+    this.logger.log(`Profile updated successfully for user ID: ${req.user.id}`);
     return { message: 'Profile updated successfully', user: updatedUser };
   }
 
@@ -177,7 +185,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Logout user' })
+  @ApiOperation({ summary: 'Logout user', operationId: 'logout' })
   @ApiBearerAuth()
   @ApiResponse({
     status: 200,
@@ -188,10 +196,44 @@ export class AuthController {
       }
     }
   })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
   async logout(@Request() req) {
-    this.logger.log(`Logout request for user ID: ${req.user.userId}`);
-    const success = await this.authService.logout(req.user.userId);
+    this.logger.log(`Logout request for user ID: ${req.user.id}`);
+    const success = await this.authService.logout(req.user.id);
     return { message: success ? 'Logged out successfully' : 'Logout completed' };
+  }
+
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @Post('register-moderator')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Admin register a new moderator/admin user', operationId: 'registerModerator' })
+  @ApiBearerAuth()
+  @ApiBody({ type: RegisterModeratorDto })
+  @ApiResponse({
+    status: 201,
+    description: 'Moderator/Admin registered successfully',
+    schema: {
+      example: {
+        user: {
+          id: 'uuid-string',
+          email: 'moderator@example.com',
+          role: 'moderator',
+          createdAt: '2023-01-01T00:00:00.000Z',
+          updatedAt: '2023-01-01T00:00:00.000Z'
+        },
+        token: 'jwt-token-string'
+      }
+    }
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Only admins can register moderators' })
+  @ApiResponse({ status: 400, description: 'Bad request (email already exists, weak password, invalid role, etc.)' })
+  @UsePipes(ValidationPipe)
+  async registerModerator(@Body() registerModeratorDto: RegisterModeratorDto) {
+    this.logger.log(`Admin register moderator attempt for email: ${registerModeratorDto.email} with role: ${registerModeratorDto.role}`);
+    const result = await this.authService.registerModerator(registerModeratorDto);
+    this.logger.log(`Moderator registered successfully with ID: ${result.user.id} and role: ${result.user.role}`);
+    return result;
   }
 }

@@ -5,7 +5,9 @@ import { AuthService } from '../../src/auth/auth.service';
 import { RegisterDto } from '../../src/auth/dto/register.dto';
 import { LoginDto } from '../../src/auth/dto/login.dto';
 import { RequestPasswordResetDto, ResetPasswordDto } from '../../src/auth/dto/password-reset.dto';
+import { RegisterModeratorDto } from '../../src/auth/dto/register-moderator.dto';
 import { UserProfileDto } from '../../src/auth/dto/user-profile.dto';
+import { User, UserRole } from '../../src/auth/entities/user.entity';
 
 describe('AuthController', () => {
   let controller: AuthController;
@@ -18,6 +20,7 @@ describe('AuthController', () => {
     updateProfile: jest.fn(),
     requestPasswordReset: jest.fn(),
     resetPassword: jest.fn(),
+    registerModerator: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -151,6 +154,48 @@ describe('AuthController', () => {
       expect(result).toEqual({ 
         message: 'Password has been reset successfully.' 
       });
+    });
+  });
+
+  describe('registerModerator', () => {
+    it('should register a new moderator', async () => {
+      const registerModeratorDto = {
+        email: 'moderator@example.com',
+        password: 'password123',
+        role: UserRole.MODERATOR,
+      };
+
+      const mockResult = {
+        user: { id: '1', email: 'moderator@example.com', role: 'moderator' },
+        token: 'jwt_token',
+      };
+
+      (authService.registerModerator as jest.Mock).mockResolvedValue(mockResult);
+
+      const result = await controller.registerModerator(registerModeratorDto);
+
+      expect(authService.registerModerator).toHaveBeenCalledWith(registerModeratorDto);
+      expect(result).toEqual(mockResult);
+    });
+
+    it('should register a new admin', async () => {
+      const registerModeratorDto = {
+        email: 'admin@example.com',
+        password: 'password123',
+        role: UserRole.ADMIN,
+      };
+
+      const mockResult = {
+        user: { id: '2', email: 'admin@example.com', role: 'admin' },
+        token: 'jwt_token',
+      };
+
+      (authService.registerModerator as jest.Mock).mockResolvedValue(mockResult);
+
+      const result = await controller.registerModerator(registerModeratorDto);
+
+      expect(authService.registerModerator).toHaveBeenCalledWith(registerModeratorDto);
+      expect(result).toEqual(mockResult);
     });
   });
 });

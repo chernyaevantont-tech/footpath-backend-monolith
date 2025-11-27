@@ -9,6 +9,7 @@ import { PasswordResetToken } from './entities/password-reset-token.entity';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AppInitializerService } from '../app-initializer.service';
+import { RolesGuard } from './guards/roles.guard';
 
 @Module({
   imports: [
@@ -25,7 +26,7 @@ import { AppInitializerService } from '../app-initializer.service';
     RedisModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, AppInitializerService],
-  exports: [AuthService, AppInitializerService],
+  providers: [AuthService, JwtStrategy, AppInitializerService, RolesGuard],
+  exports: [AuthService, AppInitializerService, RolesGuard],
 })
 export class AuthModule {}
