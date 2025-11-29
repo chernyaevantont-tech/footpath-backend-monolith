@@ -66,12 +66,12 @@ services:
       - neo4j_import:/import
       - neo4j_plugins:/plugins
     healthcheck:
-      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider localhost:7474 || exit 1"]
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p letmein123 'MATCH (n) RETURN count(n) LIMIT 1;' || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 30s
-    restart: unless-stopped
+      retries: 20  # Increased retries for proper startup
+      start_period: 60s
+    restart: on-failure:5  # Limit restart attempts to avoid infinite loops
     stop_signal: SIGINT
     stop_grace_period: 30s
 
