@@ -54,6 +54,10 @@ This document provides comprehensive guidance for developing a mobile client for
 - `PUT /places/{id}/approve` - Approve a place (moderator/admin only)
 - `PUT /places/{id}/reject` - Reject a place (moderator/admin only)
 
+The Place object returned by these APIs now includes:
+- `creatorId` - The ID of the user who proposed the place
+- `moderatorId` - The ID of the moderator who approved/rejected the place (null if pending)
+
 #### Friends APIs
 - `GET /friends` - Get list of friends
 - `POST /friends/requests` - Send friend request
@@ -89,6 +93,13 @@ This document provides comprehensive guidance for developing a mobile client for
 
 ## UI/UX Design Specifications
 
+### New Place Creator Tracking Feature
+The system now tracks which user proposed each place. This enables:
+- Users to see who recommended places they visit
+- Moderators to review places by specific users
+- Better accountability for submitted content
+- Potential social features based on place recommendations
+
 ### Role-Based Interface
 The mobile application will have different UI flows based on user role:
 
@@ -99,11 +110,13 @@ The mobile application will have different UI flows based on user role:
 - Walk creation and participation
 - Notifications
 - Profile management
+- Place details showing who created/proposed the place
 
 #### Moderator Interface (in addition to user features)
 - POI moderation queue
 - Ability to approve/reject places
 - Access to moderation logs
+- View place creators in moderation queue to identify repeat contributors
 
 #### Admin Interface (in addition to moderator features)
 - Admin dashboard
@@ -127,6 +140,7 @@ The mobile application will have different UI flows based on user role:
 - Search and filtering capabilities
 - Route visualization
 - Location tracking
+- Display creator information on place details (show who proposed the place)
 
 #### Navigation Drawer
 - Role-specific menu items
@@ -165,7 +179,8 @@ data class Place(
     val longitude: Double,
     val tags: List<String>,
     val status: String, // "pending", "approved", "rejected"
-    val ownerId: String,
+    val creatorId: String, // ID of the user who proposed this place
+    val moderatorId: String?, // ID of the moderator who approved/rejected (nullable)
     val createdAt: Date,
     val updatedAt: Date
 )
