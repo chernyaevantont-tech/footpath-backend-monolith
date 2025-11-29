@@ -1,4 +1,4 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany, ManyToOne } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
 import { PlaceModerationLog } from './place-moderation-log.entity';
 import { User } from '../../auth/entities/user.entity';
 
@@ -35,10 +35,18 @@ export class Place {
   })
   status: PlaceStatus;
 
-  @Column({ nullable: true })
+  @Column({ name: 'creator_id', nullable: true, type: 'uuid' })
+  creatorId: string;
+
+  @Column({ name: 'moderator_id', nullable: true })
   moderatorId: string;
 
-  @ManyToOne(() => User, user => user.id, { nullable: true })
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'creator_id' })
+  creator: User;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'moderator_id' })
   moderator: User;
 
   @CreateDateColumn({ name: 'created_at' })

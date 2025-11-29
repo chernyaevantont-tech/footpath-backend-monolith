@@ -27,7 +27,7 @@ services:
       - neo4j
       - redis
     entrypoint: ["/usr/local/bin/wait-for-it.sh", "postgres:5432", "neo4j:7687", "redis:6379", "--"]
-    command: ["node", "dist/main.js"]
+    command: ["/bin/sh", "-c", "npm run migration:run && node dist/main.js"]
 
   # PostgreSQL with PostGIS and pgvector
   postgres:

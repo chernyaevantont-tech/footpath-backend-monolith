@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, Logger, UnauthorizedException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, Raw } from 'typeorm';
+import { v4 as uuidv4 } from 'uuid';
 import { Place } from './entities/place.entity';
 import { Tag } from './entities/tag.entity';
 import { PlaceModerationLog } from './entities/place-moderation-log.entity';
@@ -30,22 +31,30 @@ export class PlacesService {
     private redisService: RedisService,
   ) {}
 
-  async createPlace(createPlaceDto: CreatePlaceDto) {
+  async createPlace(createPlaceDto: CreatePlaceDto, creatorId: string) {
     this.logger.log('Creating new place');
 
-    // Create coordinates point format for PostGIS
-    const coordinates = `POINT(${createPlaceDto.coordinates.longitude} ${createPlaceDto.coordinates.latitude})`;
+    // Generate a UUID for the place
+    const placeId = uuidv4();
 
-    // Create the place entity
-    const place = new Place();
-    place.name = createPlaceDto.name;
-    place.description = createPlaceDto.description || null;
-    place.coordinates = coordinates; // PostGIS Point format
-    place.tagIds = createPlaceDto.tagIds || [];
-    place.status = PlaceStatus.PENDING; // New places start as pending
+    // Insert the place using raw SQL to bypass TypeORM's geometry processing
+    await this.placeRepository.query(
+      `INSERT INTO places (id, name, description, coordinates, "tagIds", status, creator_id, created_at, updated_at)
+       VALUES ($1, $2, $3, ST_SetSRID(ST_Point($4, $5), 4326), $6, $7, $8, NOW(), NOW())`,
+      [
+        placeId,
+        createPlaceDto.name,
+        createPlaceDto.description || null,
+        createPlaceDto.coordinates.longitude,
+        createPlaceDto.coordinates.latitude,
+        createPlaceDto.tagIds && createPlaceDto.tagIds.length > 0 ? createPlaceDto.tagIds.join(',') : null, // Format as comma-separated string for simple-array
+        PlaceStatus.PENDING,
+        creatorId
+      ]
+    );
 
-    // Save the place first to get the ID
-    const savedPlace = await this.placeRepository.save(place);
+    // Fetch the newly created place
+    const savedPlace = await this.placeRepository.findOne({ where: { id: placeId } });
 
     // Log the submission
     await this.logModerationAction(
@@ -142,7 +151,7 @@ export class PlacesService {
     return place;
   }
 
-  async updatePlace(id: string, updatePlaceDto: UpdatePlaceDto) {
+  async updatePlace(id: string, updatePlaceDto: UpdatePlaceDto, updaterId?: string) {
     this.logger.log(`Updating place with ID: ${id}`);
 
     const place = await this.placeRepository.findOne({ where: { id } });
@@ -165,14 +174,22 @@ export class PlacesService {
     if (updatePlaceDto.description !== undefined) {
       place.description = updatePlaceDto.description;
     }
-    if (updatePlaceDto.coordinates) {
-      place.coordinates = `POINT(${updatePlaceDto.coordinates.longitude} ${updatePlaceDto.coordinates.latitude})`;
-    }
     if (updatePlaceDto.tagIds) {
       place.tagIds = updatePlaceDto.tagIds;
     }
 
     const updatedPlace = await this.placeRepository.save(place);
+
+    // Update coordinates separately using raw query if provided to avoid TypeORM geometry parsing
+    if (updatePlaceDto.coordinates) {
+      await this.placeRepository.query(
+        `UPDATE places SET coordinates = ST_SetSRID(ST_Point($1, $2), 4326) WHERE id = $3`,
+        [updatePlaceDto.coordinates.longitude, updatePlaceDto.coordinates.latitude, updatedPlace.id]
+      );
+
+      // Update the coordinates for the returned object
+      updatedPlace.coordinates = `POINT(${updatePlaceDto.coordinates.longitude} ${updatePlaceDto.coordinates.latitude})`;
+    }
 
     // Log the update
     await this.logModerationAction(

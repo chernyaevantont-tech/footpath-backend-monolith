@@ -33,13 +33,15 @@ WORKDIR /usr/src/app
 # Copy package files
 COPY package*.json ./
 
-# Install only production dependencies
-RUN npm ci --only=production
+# Install all dependencies for running migrations
+RUN npm ci
 
 # Copy built application from builder stage
 COPY --from=builder /usr/src/app/dist ./dist
 
-# Copy wait-for-it script to /usr/local/bin to avoid being treated as a module
+# Copy source files needed for migrations
+COPY --from=builder /usr/src/app/src ./src
+COPY --from=builder /usr/src/app/tsconfig.json ./
 COPY --from=builder /usr/src/app/wait-for-it.sh /usr/local/bin/wait-for-it.sh
 RUN chmod +x /usr/local/bin/wait-for-it.sh
 

@@ -44,6 +44,7 @@ export class PlacesController {
         description: 'A beautiful park in the city',
         tags: ['park', 'nature'],
         status: 'pending',
+        creatorId: 'user-uuid-string',
         createdAt: '2023-01-01T00:00:00.000Z',
         updatedAt: '2023-01-01T00:00:00.000Z'
       }
@@ -51,9 +52,9 @@ export class PlacesController {
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Forbidden' })
-  async createPlace(@Body() createPlaceDto: CreatePlaceDto) {
+  async createPlace(@Body() createPlaceDto: CreatePlaceDto, @Request() req) {
     this.logger.log('Creating new place');
-    return await this.placesService.createPlace(createPlaceDto);
+    return await this.placesService.createPlace(createPlaceDto, req.user.id);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -130,6 +131,7 @@ export class PlacesController {
         description: 'A beautiful updated park in the city',
         tags: ['park', 'nature', 'updated'],
         status: 'pending',
+        creatorId: 'user-uuid-string',
         createdAt: '2023-01-01T00:00:00.000Z',
         updatedAt: '2023-01-02T00:00:00.000Z'
       }
@@ -137,9 +139,9 @@ export class PlacesController {
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Place not found' })
-  async updatePlace(@Param('id') id: string, @Body() updatePlaceDto: UpdatePlaceDto) {
+  async updatePlace(@Param('id') id: string, @Body() updatePlaceDto: UpdatePlaceDto, @Request() req) {
     this.logger.log(`Updating place with ID: ${id}`);
-    return await this.placesService.updatePlace(id, updatePlaceDto);
+    return await this.placesService.updatePlace(id, updatePlaceDto, req.user.id);
   }
 
   @UseGuards(JwtAuthGuard)
