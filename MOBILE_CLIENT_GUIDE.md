@@ -39,20 +39,76 @@ This document provides comprehensive guidance for developing a mobile client for
 
 #### Authentication APIs
 - `POST /auth/register` - User registration
+  - Request Body: `{"email": "string", "password": "string"}`
+  - Response: `{"user": {"id": "string", "email": "string", "role": "string"}, "token": "string"}`
+  - Error Codes: 400 (Bad Request), 409 (Conflict - email already exists)
+
 - `POST /auth/login` - User login
+  - Request Body: `{"email": "string", "password": "string"}`
+  - Response: `{"user": {"id": "string", "email": "string", "role": "string"}, "token": "string"}`
+  - Error Codes: 400 (Bad Request), 401 (Unauthorized)
+
 - `GET /auth/me` - Get current user profile
+  - Headers: `Authorization: Bearer <token>`
+  - Response: `{"id": "string", "email": "string", "role": "string", "createdAt": "datetime", "updatedAt": "datetime"}`
+  - Error Codes: 401 (Unauthorized)
+
 - `PUT /auth/profile` - Update user profile
+  - Headers: `Authorization: Bearer <token>`
+  - Request Body: `{"name": "string", "bio": "string"}`
+  - Response: `{"id": "string", "email": "string", "role": "string", "name": "string", "bio": "string"}`
+  - Error Codes: 401 (Unauthorized)
+
 - `POST /auth/logout` - User logout
+  - Headers: `Authorization: Bearer <token>`
+  - Response: `{"message": "Successfully logged out"}`
+  - Error Codes: 401 (Unauthorized)
+
 - `POST /auth/request-password-reset` - Password reset request
+  - Request Body: `{"email": "string"}`
+  - Response: `{"message": "Password reset email sent"}`
+  - Error Codes: 404 (User not found)
+
 - `POST /auth/reset-password` - Password reset confirmation
+  - Request Body: `{"token": "string", "password": "string"}`
+  - Response: `{"message": "Password updated successfully"}`
+  - Error Codes: 400 (Invalid token)
 
 #### Places APIs
 - `POST /places` - Create a new place (pending moderation)
+  - Headers: `Authorization: Bearer <token>`
+  - Request Body: `{"name": "string", "description": "string", "coordinates": {"latitude": "number", "longitude": "number"}, "tagIds": ["string"]}`
+  - Response: `{"id": "string", "name": "string", "description": "string", "coordinates": {"type": "string", "coordinates": ["number"]}, "tagIds": ["string"], "status": "string", "creatorId": "string", "moderatorId": "string", "createdAt": "datetime", "updatedAt": "datetime"}`
+  - Error Codes: 401 (Unauthorized)
+
 - `GET /places` - Search for places with filters (radius, tags, status)
+  - Headers: `Authorization: Bearer <token>`
+  - Query Params: `?name=string&status=string&tagIds[]=string&location={"latitude": "number", "longitude": "number", "radius": "number"}&page=number&limit=number`
+  - Response: `{"data": [...], "meta": {"page": "number", "limit": "number", "total": "number", "pages": "number"}}`
+  - Error Codes: 401 (Unauthorized)
+
 - `GET /places/{id}` - Get a specific place by ID
+  - Headers: `Authorization: Bearer <token>`
+  - Response: `{"id": "string", "name": "string", "description": "string", "coordinates": {"type": "string", "coordinates": ["number"]}, "tagIds": ["string"], "status": "string", "creatorId": "string", "moderatorId": "string", "createdAt": "datetime", "updatedAt": "datetime"}`
+  - Error Codes: 401 (Unauthorized), 404 (Place not found)
+
 - `PUT /places/{id}` - Update a place (user's own places only)
+  - Headers: `Authorization: Bearer <token>`
+  - Request Body: `{"name": "string", "description": "string", "coordinates": {"latitude": "number", "longitude": "number"}}`
+  - Response: `{"id": "string", "name": "string", "description": "string", "coordinates": {"type": "string", "coordinates": ["number"]}, "tagIds": ["string"], "status": "string", "creatorId": "string", "moderatorId": "string", "createdAt": "datetime", "updatedAt": "datetime"}`
+  - Error Codes: 401 (Unauthorized), 404 (Place not found)
+
 - `PUT /places/{id}/approve` - Approve a place (moderator/admin only)
+  - Headers: `Authorization: Bearer <token>`
+  - Request Body: `{"reason": "string"}` (optional)
+  - Response: `{"id": "string", "name": "string", "status": "approved", "moderatorId": "string", "approvedAt": "datetime"}`
+  - Error Codes: 401 (Unauthorized), 403 (Forbidden), 404 (Place not found)
+
 - `PUT /places/{id}/reject` - Reject a place (moderator/admin only)
+  - Headers: `Authorization: Bearer <token>`
+  - Request Body: `{"reason": "string"}` (optional)
+  - Response: `{"id": "string", "name": "string", "status": "rejected", "moderatorId": "string", "rejectedAt": "datetime"}`
+  - Error Codes: 401 (Unauthorized), 403 (Forbidden), 404 (Place not found)
 
 The Place object returned by these APIs now includes:
 - `creatorId` - The ID of the user who proposed the place
@@ -60,36 +116,135 @@ The Place object returned by these APIs now includes:
 
 #### Friends APIs
 - `GET /friends` - Get list of friends
+  - Headers: `Authorization: Bearer <token>`
+  - Response: `{"data": [{"id": "string", "email": "string", "name": "string"}], "count": "number"}`
+  - Error Codes: 401 (Unauthorized)
+
 - `POST /friends/requests` - Send friend request
+  - Headers: `Authorization: Bearer <token>`
+  - Request Body: `{"receiverId": "string"}`
+  - Response: `{"id": "string", "senderId": "string", "receiverId": "string", "status": "pending"}`
+  - Error Codes: 401 (Unauthorized), 404 (User not found)
+
 - `POST /friends/requests/{id}/accept` - Accept/decline friend request
+  - Headers: `Authorization: Bearer <token>`
+  - Request Body: `{"status": "accepted|declined"}`
+  - Response: `{"id": "string", "senderId": "string", "receiverId": "string", "status": "accepted|declined"}`
+  - Error Codes: 401 (Unauthorized), 404 (Request not found)
+
 - `DELETE /friends/{userId}` - Remove friend
+  - Headers: `Authorization: Bearer <token>`
+  - Response: `{"message": "Friend removed successfully"}`
+  - Error Codes: 401 (Unauthorized), 404 (Friend not found)
+
 - `GET /friends/recommendations` - Get friend recommendations
+  - Headers: `Authorization: Bearer <token>`
+  - Response: `{"data": [{"id": "string", "email": "string", "name": "string", "commonFriends": "number"}]}`
+  - Error Codes: 401 (Unauthorized)
 
 #### Paths APIs
 - `POST /paths/generate` - Generate a path based on criteria
+  - Headers: `Authorization: Bearer <token>`
+  - Request Body: `{"startLocation": {"lat": "number", "lng": "number"}, "endLocation": {"lat": "number", "lng": "number"}, "duration": "number", "tags": ["string"]}`
+  - Response: `{"id": "string", "name": "string", "description": "string", "distance": "number", "totalTime": "number", "places": [{"id": "string", "name": "string"}]}`
+  - Error Codes: 401 (Unauthorized)
+
 - `POST /paths` - Create a saved path
+  - Headers: `Authorization: Bearer <token>`
+  - Request Body: `{"name": "string", "description": "string", "places": ["string"], "distance": "number", "duration": "number"}`
+  - Response: `{"id": "string", "name": "string", "description": "string", ...}`
+  - Error Codes: 401 (Unauthorized)
+
 - `GET /paths` - Get saved paths
+  - Headers: `Authorization: Bearer <token>`
+  - Query Params: `?page=number&limit=number`
+  - Response: `{"data": [...], "meta": {"page": "number", "limit": "number", "total": "number", "pages": "number"}}`
+  - Error Codes: 401 (Unauthorized)
+
 - `GET /paths/{id}` - Get a specific path
+  - Headers: `Authorization: Bearer <token>`
+  - Response: `{"id": "string", "name": "string", "description": "string", "distance": "number", "totalTime": "number", "places": [...]}`
+
 - `PUT /paths/{id}` - Update a path
+  - Headers: `Authorization: Bearer <token>`
+  - Request Body: `{"name": "string", "description": "string"}`
+  - Response: `{"id": "string", "name": "string", "description": "string", ...}`
+  - Error Codes: 401 (Unauthorized)
+
 - `DELETE /paths/{id}` - Delete a path
+  - Headers: `Authorization: Bearer <token>`
+  - Response: `{"message": "Path deleted successfully"}`
+  - Error Codes: 401 (Unauthorized), 404 (Path not found)
 
 #### Walks APIs
 - `POST /walks` - Create a new walk
+  - Headers: `Authorization: Bearer <token>`
+  - Request Body: `{"pathId": "string", "title": "string", "startTime": "datetime", "duration": "number"}`
+  - Response: `{"id": "string", "title": "string", "pathId": "string", "status": "pending|active|completed", "participants": [...]}`
+  - Error Codes: 401 (Unauthorized)
+
 - `GET /walks` - Get list of walks
+  - Headers: `Authorization: Bearer <token>`
+  - Query Params: `?status=string&date=string`
+  - Response: `{"data": [...], "meta": {"page": "number", "limit": "number", "total": "number", "pages": "number"}}`
+  - Error Codes: 401 (Unauthorized)
+
 - `GET /walks/{id}` - Get a specific walk
+  - Headers: `Authorization: Bearer <token>`
+  - Response: `{"id": "string", "title": "string", "path": {...}, "status": "string", "participants": [...], "startTime": "datetime", "endTime": "datetime"}`
+  - Error Codes: 401 (Unauthorized), 404 (Walk not found)
+
 - `POST /walks/{id}/invite` - Invite friends to a walk
+  - Headers: `Authorization: Bearer <token>`
+  - Request Body: `{"userIds": ["string"]}`
+  - Response: `{"message": "Invitations sent", "invitations": [...]}`
+  - Error Codes: 401 (Unauthorized), 404 (Walk not found)
+
 - `POST /walks/{id}/complete` - Complete a walk
+  - Headers: `Authorization: Bearer <token>`
+  - Response: `{"id": "string", "status": "completed", "completedAt": "datetime"}`
+  - Error Codes: 401 (Unauthorized), 404 (Walk not found)
+
 - `DELETE /walks/{id}` - Cancel a walk
+  - Headers: `Authorization: Bearer <token>`
+  - Response: `{"message": "Walk canceled"}`
+  - Error Codes: 401 (Unauthorized), 404 (Walk not found)
 
 #### Notifications APIs
 - `GET /notifications` - Get user notifications
+  - Headers: `Authorization: Bearer <token>`
+  - Query Params: `?type=string&isRead=boolean&page=number&limit=number`
+  - Response: `{"data": [...], "meta": {"page": "number", "limit": "number", "total": "number", "pages": "number"}}`
+  - Error Codes: 401 (Unauthorized)
+
 - `POST /notifications/{id}/read` - Mark notification as read
+  - Headers: `Authorization: Bearer <token>`
+  - Response: `{"id": "string", "isRead": true, "readAt": "datetime"}`
+  - Error Codes: 401 (Unauthorized), 404 (Notification not found)
+
 - `POST /notifications/bulk-read` - Mark multiple notifications as read
+  - Headers: `Authorization: Bearer <token>`
+  - Request Body: `{"notificationIds": ["string"]}`
+  - Response: `{"message": "Notifications marked as read", "count": "number"}`
+  - Error Codes: 401 (Unauthorized)
 
 #### Recommendations APIs
 - `GET /recommendations/places` - Get place recommendations
+  - Headers: `Authorization: Bearer <token>`
+  - Query Params: `?limit=number&tags=["string"]`
+  - Response: `{"data": [{"id": "string", "name": "string", "description": "string", ...}], "count": "number"}`
+  - Error Codes: 401 (Unauthorized)
+
 - `GET /recommendations/paths` - Get path recommendations
+  - Headers: `Authorization: Bearer <token>`
+  - Query Params: `?limit=number&tags=["string"]`
+  - Response: `{"data": [{"id": "string", "name": "string", "places": [...]}, ...], "count": "number"}`
+  - Error Codes: 401 (Unauthorized)
+
 - `POST /recommendations/generate-all-embeddings` - Generate embeddings (admin only)
+  - Headers: `Authorization: Bearer <token>`
+  - Response: `{"message": "Embeddings generation started", "processed": "number"}`
+  - Error Codes: 401 (Unauthorized), 403 (Forbidden)
 
 ## UI/UX Design Specifications
 
