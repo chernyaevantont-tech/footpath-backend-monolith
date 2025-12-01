@@ -16,10 +16,10 @@ import {
 import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiQuery, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PlacesService } from './places.service';
-import { CreatePlaceDto } from './dto/create-place.dto';
-import { UpdatePlaceDto } from './dto/update-place.dto';
-import { PlaceFilterDto } from './dto/place-filter.dto';
-import { ApprovePlaceDto } from './dto/approve-place.dto';
+import { CreatePlaceDto } from './dto/place/create-place.dto';
+import { UpdatePlaceDto } from './dto/place/update-place.dto';
+import { PlaceFilterDto } from './dto/place/place-filter.dto';
+import { ApprovePlaceDto } from './dto/place/approve-place.dto';
 
 @ApiTags('Places')
 @Controller('places')

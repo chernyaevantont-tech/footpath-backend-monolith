@@ -1,6 +1,7 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany, ManyToOne, JoinColumn, ManyToMany, JoinTable } from 'typeorm';
 import { PlaceModerationLog } from './place-moderation-log.entity';
 import { User } from '../../auth/entities/user.entity';
+import { Tag } from './tag.entity';
 
 export enum PlaceStatus {
   PENDING = 'pending',
@@ -24,9 +25,6 @@ export class Place {
     srid: 4326
   })
   coordinates: string; // Format: "POINT(longitude latitude)"
-
-  @Column({ type: 'simple-array', nullable: true }) // Array of tag IDs
-  tagIds: string[];
 
   @Column({
     type: 'enum',
@@ -57,4 +55,8 @@ export class Place {
 
   @OneToMany(() => PlaceModerationLog, moderationLog => moderationLog.place)
   moderationLogs: PlaceModerationLog[];
+
+  @ManyToMany(() => Tag)
+  @JoinTable()
+  categories: Tag[];
 }

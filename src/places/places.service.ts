@@ -5,9 +5,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { Place } from './entities/place.entity';
 import { Tag } from './entities/tag.entity';
 import { PlaceModerationLog } from './entities/place-moderation-log.entity';
-import { CreatePlaceDto } from './dto/create-place.dto';
-import { UpdatePlaceDto } from './dto/update-place.dto';
-import { PlaceFilterDto } from './dto/place-filter.dto';
+import { CreatePlaceDto } from './dto/place/create-place.dto';
+import { UpdatePlaceDto } from './dto/place/update-place.dto';
+import { PlaceFilterDto } from './dto/place/place-filter.dto';
 import { PlaceStatus } from './entities/place.entity';
 import { ModerationAction } from './entities/place-moderation-log.entity';
 import { User, UserRole } from '../auth/entities/user.entity';
@@ -30,6 +30,8 @@ export class PlacesService {
     private recommendationsService: RecommendationsService,
     private redisService: RedisService,
   ) {}
+
+  async createTag
 
   async createPlace(createPlaceDto: CreatePlaceDto, creatorId: string) {
     this.logger.log('Creating new place');

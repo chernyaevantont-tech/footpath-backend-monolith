@@ -1,7 +1,7 @@
 import { IsString, IsOptional, IsArray, IsEnum, ValidateNested, IsNumber, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { PlaceStatus } from '../entities/place.entity';
+import { PlaceStatus } from '../../entities/place.entity';
 
 class LocationFilterDto {
   @ApiProperty({
