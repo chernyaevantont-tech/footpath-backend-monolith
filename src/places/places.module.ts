@@ -2,6 +2,7 @@ import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { RedisModule } from '../common/redis.module';
 import { PlacesController } from './places.controller';
+import { TagsController } from './tags.controller';
 import { PlacesService } from './places.service';
 import { Place } from './entities/place.entity';
 import { Tag } from './entities/tag.entity';
@@ -14,7 +15,7 @@ import { RecommendationsModule } from '../recommendations/recommendations.module
     RedisModule,
     forwardRef(() => RecommendationsModule), // For circular dependency
   ],
-  controllers: [PlacesController],
+  controllers: [PlacesController, TagsController],
   providers: [PlacesService],
   exports: [PlacesService],
 })

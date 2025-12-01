@@ -13,6 +13,7 @@ import { TokenUtil } from './utils/token.util';
 import { ConfigService } from '@nestjs/config';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RedisService } from '../common/redis.service';
+import { UserResponseDto } from './dto/user-response.dto';
 
 @Injectable()
 export class AuthService {
@@ -28,7 +29,18 @@ export class AuthService {
     private redisService: RedisService,
   ) {}
 
-  async register(registerDto: RegisterDto): Promise<{ user: User; token: string }> {
+  // Helper method to convert User entity to UserResponseDto
+  private entityToDto(user: User): UserResponseDto {
+    const dto = new UserResponseDto();
+    dto.id = user.id;
+    dto.email = user.email;
+    dto.role = user.role;
+    dto.createdAt = user.createdAt;
+    dto.updatedAt = user.updatedAt;
+    return dto;
+  }
+
+  async register(registerDto: RegisterDto): Promise<{ user: UserResponseDto; token: string }> {
     const { email, password } = registerDto;
 
     // Validate password strength
@@ -55,10 +67,13 @@ export class AuthService {
     // Generate JWT token
     const token = this.generateToken(savedUser);
 
-    return { user: savedUser, token };
+    // Convert to DTO
+    const userDto = this.entityToDto(savedUser);
+
+    return { user: userDto, token };
   }
 
-  async login(loginDto: LoginDto): Promise<{ user: User; token: string }> {
+  async login(loginDto: LoginDto): Promise<{ user: UserResponseDto; token: string }> {
     const { email, password } = loginDto;
 
     // Find user by email
@@ -92,7 +107,10 @@ export class AuthService {
 
     this.logger.log(`Session created for user ${user.id}, stored in Redis with TTL ${sessionTtl}s`);
 
-    return { user, token };
+    // Convert to DTO
+    const userDto = this.entityToDto(user);
+
+    return { user: userDto, token };
   }
 
   async validateUser(email: string): Promise<User | null> {
@@ -107,14 +125,15 @@ export class AuthService {
     });
   }
 
-  async getProfile(userId: string): Promise<User> {
+  async getProfile(userId: string): Promise<UserResponseDto> {
     // Try to get user data from cache first
     const cacheKey = `user:profile:${userId}`;
     const cachedUser = await this.redisService.getJson(cacheKey);
 
     if (cachedUser) {
       this.logger.log(`Cache hit for user profile: ${userId}`);
-      return cachedUser;
+      // Convert cached entity to DTO
+      return this.entityToDto(cachedUser);
     }
 
     const user = await this.userRepository.findOne({
@@ -125,9 +144,10 @@ export class AuthService {
     // Cache the user profile for 1 hour
     if (user) {
       await this.redisService.setJson(cacheKey, user, 3600);
+      return this.entityToDto(user);
     }
 
-    return user;
+    return null;
   }
 
   async getSessionData(userId: string): Promise<any | null> {
@@ -143,7 +163,7 @@ export class AuthService {
     return null;
   }
 
-  async updateProfile(userId: string, email: string): Promise<User> {
+  async updateProfile(userId: string, email: string): Promise<UserResponseDto> {
     const user = await this.userRepository.findOne({ where: { id: userId } });
     if (!user) {
       throw new UnauthorizedException('User not found');
@@ -164,7 +184,7 @@ export class AuthService {
     const cacheKey = `user:profile:${userId}`;
     await this.redisService.del(cacheKey);
 
-    return updatedUser;
+    return this.entityToDto(updatedUser);
   }
 
   async requestPasswordReset(requestPasswordResetDto: RequestPasswordResetDto): Promise<void> {
@@ -234,7 +254,7 @@ export class AuthService {
     this.logger.log(`Password reset completed for user ${user.id}`);
   }
 
-  async registerModerator(registerModeratorDto: RegisterModeratorDto): Promise<{ user: User; token: string }> {
+  async registerModerator(registerModeratorDto: RegisterModeratorDto): Promise<{ user: UserResponseDto; token: string }> {
     const { email, password, role } = registerModeratorDto;
 
     // Validate that the role is either MODERATOR or ADMIN
@@ -267,7 +287,10 @@ export class AuthService {
     // Generate JWT token
     const token = this.generateToken(savedUser);
 
-    return { user: savedUser, token };
+    // Convert to DTO
+    const userDto = this.entityToDto(savedUser);
+
+    return { user: userDto, token };
   }
 
   async logout(userId: string): Promise<boolean> {

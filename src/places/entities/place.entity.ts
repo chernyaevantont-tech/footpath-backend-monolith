@@ -56,7 +56,17 @@ export class Place {
   @OneToMany(() => PlaceModerationLog, moderationLog => moderationLog.place)
   moderationLogs: PlaceModerationLog[];
 
-  @ManyToMany(() => Tag)
-  @JoinTable()
-  categories: Tag[];
+  @ManyToMany(() => Tag, tag => tag.places, { cascade: true })
+  @JoinTable({
+    name: 'place_tags', // Specify the join table name
+    joinColumn: {
+      name: 'place_id',
+      referencedColumnName: 'id'
+    },
+    inverseJoinColumn: {
+      name: 'tag_id',
+      referencedColumnName: 'id'
+    }
+  })
+  tags: Tag[];
 }

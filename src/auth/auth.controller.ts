@@ -25,6 +25,9 @@ import { RolesGuard } from './guards/roles.guard';
 import { Roles } from './decorators/roles.decorator';
 import { User, UserRole } from './entities/user.entity';
 import { UserProfileDto } from './dto/user-profile.dto';
+import { UserResponseDto } from './dto/user-response.dto';
+import { RegisterResponseDto } from './dto/register-response.dto';
+import { LoginResponseDto } from './dto/login-response.dto';
 
 @ApiTags('Authentication')
 @Controller('auth')
@@ -40,18 +43,7 @@ export class AuthController {
   @ApiResponse({
     status: 201,
     description: 'User registered successfully',
-    schema: {
-      example: {
-        user: {
-          id: 'uuid-string',
-          email: 'user@example.com',
-          role: 'user',
-          createdAt: '2023-01-01T00:00:00.000Z',
-          updatedAt: '2023-01-01T00:00:00.000Z'
-        },
-        token: 'jwt-token-string'
-      }
-    }
+    type: RegisterResponseDto
   })
   @ApiResponse({ status: 400, description: 'Bad request (email already exists, weak password, etc.)' })
   async register(@Body() registerDto: RegisterDto) {
@@ -68,16 +60,7 @@ export class AuthController {
   @ApiResponse({
     status: 200,
     description: 'User logged in successfully',
-    schema: {
-      example: {
-        user: {
-          id: 'uuid-string',
-          email: 'user@example.com',
-          role: 'user'
-        },
-        token: 'jwt-token-string'
-      }
-    }
+    type: LoginResponseDto
   })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
   async login(@Body() loginDto: LoginDto) {
@@ -98,19 +81,12 @@ export class AuthController {
   @ApiResponse({
     status: 200,
     description: 'User profile retrieved successfully',
-    schema: {
-      example: {
-        id: 'uuid-string',
-        userId: 'uuid-string',
-        email: 'user@example.com',
-        role: 'user'
-      }
-    }
+    type: UserResponseDto
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getProfile(@Request() req) {
     this.logger.log(`Get profile request for user ID: ${req.user.id}`);
-    return req.user;
+    return await this.authService.getProfile(req.user.id);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -122,25 +98,14 @@ export class AuthController {
   @ApiResponse({
     status: 200,
     description: 'Profile updated successfully',
-    schema: {
-      example: {
-        message: 'Profile updated successfully',
-        user: {
-          id: 'uuid-string',
-          email: 'updated@example.com',
-          role: 'user',
-          createdAt: '2023-01-01T00:00:00.000Z',
-          updatedAt: '2023-01-02T00:00:00.000Z'
-        }
-      }
-    }
+    type: UserResponseDto
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async updateProfile(@Request() req, @Body() userProfileDto: UserProfileDto) {
     this.logger.log(`Update profile request for user ID: ${req.user.id}`);
     const updatedUser = await this.authService.updateProfile(req.user.id, userProfileDto.email);
     this.logger.log(`Profile updated successfully for user ID: ${req.user.id}`);
-    return { message: 'Profile updated successfully', user: updatedUser };
+    return updatedUser;
   }
 
   @Post('request-password-reset')
@@ -213,18 +178,7 @@ export class AuthController {
   @ApiResponse({
     status: 201,
     description: 'Moderator/Admin registered successfully',
-    schema: {
-      example: {
-        user: {
-          id: 'uuid-string',
-          email: 'moderator@example.com',
-          role: 'moderator',
-          createdAt: '2023-01-01T00:00:00.000Z',
-          updatedAt: '2023-01-01T00:00:00.000Z'
-        },
-        token: 'jwt-token-string'
-      }
-    }
+    type: RegisterResponseDto
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Forbidden - Only admins can register moderators' })

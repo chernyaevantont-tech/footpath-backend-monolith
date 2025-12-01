@@ -20,6 +20,8 @@ import { CreatePlaceDto } from './dto/place/create-place.dto';
 import { UpdatePlaceDto } from './dto/place/update-place.dto';
 import { PlaceFilterDto } from './dto/place/place-filter.dto';
 import { ApprovePlaceDto } from './dto/place/approve-place.dto';
+import { PlaceResponseDto } from './dto/place/place-response.dto';
+import { PlaceFilterResponseDto } from './dto/place/place-filter-response.dto';
 
 @ApiTags('Places')
 @Controller('places')
@@ -37,18 +39,7 @@ export class PlacesController {
   @ApiResponse({
     status: 201,
     description: 'Place created successfully',
-    schema: {
-      example: {
-        id: 'uuid-string',
-        name: 'Central Park',
-        description: 'A beautiful park in the city',
-        tags: ['park', 'nature'],
-        status: 'pending',
-        creatorId: 'user-uuid-string',
-        createdAt: '2023-01-01T00:00:00.000Z',
-        updatedAt: '2023-01-01T00:00:00.000Z'
-      }
-    }
+    type: PlaceResponseDto
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Forbidden' })
@@ -66,19 +57,7 @@ export class PlacesController {
   @ApiResponse({
     status: 200,
     description: 'Places retrieved successfully',
-    schema: {
-      example: [
-        {
-          id: 'uuid-string',
-          name: 'Central Park',
-          description: 'A beautiful park in the city',
-          tags: ['park', 'nature'],
-          status: 'approved',
-          createdAt: '2023-01-01T00:00:00.000Z',
-          updatedAt: '2023-01-01T00:00:00.000Z'
-        }
-      ]
-    }
+    type: PlaceFilterResponseDto
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async findPlaces(@Query() filterDto: PlaceFilterDto) {
@@ -95,17 +74,7 @@ export class PlacesController {
   @ApiResponse({
     status: 200,
     description: 'Place retrieved successfully',
-    schema: {
-      example: {
-        id: 'uuid-string',
-        name: 'Central Park',
-        description: 'A beautiful park in the city',
-        tags: ['park', 'nature'],
-        status: 'approved',
-        createdAt: '2023-01-01T00:00:00.000Z',
-        updatedAt: '2023-01-01T00:00:00.000Z'
-      }
-    }
+    type: PlaceResponseDto
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Place not found' })
@@ -124,18 +93,7 @@ export class PlacesController {
   @ApiResponse({
     status: 200,
     description: 'Place updated successfully',
-    schema: {
-      example: {
-        id: 'uuid-string',
-        name: 'Updated Central Park',
-        description: 'A beautiful updated park in the city',
-        tags: ['park', 'nature', 'updated'],
-        status: 'pending',
-        creatorId: 'user-uuid-string',
-        createdAt: '2023-01-01T00:00:00.000Z',
-        updatedAt: '2023-01-02T00:00:00.000Z'
-      }
-    }
+    type: PlaceResponseDto
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Place not found' })
@@ -154,15 +112,7 @@ export class PlacesController {
   @ApiResponse({
     status: 200,
     description: 'Place approved successfully',
-    schema: {
-      example: {
-        id: 'uuid-string',
-        name: 'Central Park',
-        status: 'approved',
-        moderatorId: 'moderator-uuid',
-        approvedAt: '2023-01-01T00:00:00.000Z'
-      }
-    }
+    type: PlaceResponseDto
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Forbidden - insufficient permissions' })
@@ -192,15 +142,7 @@ export class PlacesController {
   @ApiResponse({
     status: 200,
     description: 'Place rejected successfully',
-    schema: {
-      example: {
-        id: 'uuid-string',
-        name: 'Central Park',
-        status: 'rejected',
-        moderatorId: 'moderator-uuid',
-        rejectedAt: '2023-01-01T00:00:00.000Z'
-      }
-    }
+    type: PlaceResponseDto
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Forbidden - insufficient permissions' })

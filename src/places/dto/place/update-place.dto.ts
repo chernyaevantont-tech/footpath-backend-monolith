@@ -20,7 +20,7 @@ export class UpdateCoordinatesDto {
     minimum: -90,
     maximum: 90,
   })
-  @IsNumber()
+  @IsNumber()2
   @Min(-90)
   @Max(90)
   latitude: number;

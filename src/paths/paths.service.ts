@@ -11,6 +11,11 @@ import { PathFilterDto } from './dto/path-filter.dto';
 import { PathStatus } from './entities/path.entity';
 import { PathCalculationService } from './utils/path-calculation.service';
 import { AdvancedPathfindingService } from './utils/advanced-pathfinding.service';
+import { PathResponseDto } from './dto/path-response.dto';
+import { PathPlaceResponseDto } from './dto/path-place-response.dto';
+import { PathsListResponseDto } from './dto/paths-list-response.dto';
+import { PlaceResponseDto } from '../places/dto/place/place-response.dto';
+import { UserResponseDto } from '../auth/dto/user-response.dto';
 
 @Injectable()
 export class PathsService {
@@ -26,6 +31,74 @@ export class PathsService {
     private pathCalculationService: PathCalculationService,
     private advancedPathfindingService: AdvancedPathfindingService,
   ) {}
+
+  // Helper method to convert Path entity to PathResponseDto
+  private entityToDto(path: Path): PathResponseDto {
+    const dto = new PathResponseDto();
+    dto.id = path.id;
+    dto.name = path.name;
+    dto.description = path.description || null;
+    dto.distance = path.distance;
+    dto.totalTime = path.totalTime;
+    dto.status = path.status;
+    dto.creatorId = path.creatorId || null;
+    dto.createdAt = path.createdAt;
+    dto.updatedAt = path.updatedAt;
+
+    // Convert path places to DTOs
+    if (path.pathPlaces) {
+      dto.pathPlaces = path.pathPlaces.map(pathPlace => {
+        const pathPlaceDto = new PathPlaceResponseDto();
+        pathPlaceDto.pathId = pathPlace.pathId;
+        pathPlaceDto.placeId = pathPlace.placeId;
+        pathPlaceDto.order = pathPlace.order;
+        pathPlaceDto.timeSpent = pathPlace.timeAtPlace;
+
+        // Create a simplified place DTO (could be expanded with more place details if needed)
+        if (pathPlace.place) {
+          const placeDto = new PlaceResponseDto();
+          placeDto.id = pathPlace.place.id;
+          placeDto.name = pathPlace.place.name;
+          placeDto.description = pathPlace.place.description || null;
+          placeDto.coordinates = pathPlace.place.coordinates;
+          placeDto.status = pathPlace.place.status;
+          placeDto.creatorId = pathPlace.place.creatorId || null;
+          placeDto.moderatorId = pathPlace.place.moderatorId || null;
+          placeDto.createdAt = pathPlace.place.createdAt;
+          placeDto.updatedAt = pathPlace.place.updatedAt;
+          placeDto.tags = pathPlace.place.categories ? pathPlace.place.categories.map(tag => {
+            const tagDto = new (require('../places/dto/tag/tag-response.dto').TagResponseDto)();
+            tagDto.id = tag.id;
+            tagDto.name = tag.name;
+            tagDto.createdAt = tag.createdAt;
+            tagDto.updatedAt = tag.updatedAt;
+            return tagDto;
+          }) : [];
+          pathPlaceDto.place = placeDto;
+        }
+
+        return pathPlaceDto;
+      });
+    } else {
+      dto.pathPlaces = [];
+    }
+
+    // For now, creator is not returned in the response (would require an additional relation)
+    // This could be added if needed
+    dto.creator = path.creator ? this.mapUserToDto(path.creator) : null;
+
+    return dto;
+  }
+
+  private mapUserToDto(user: any): UserResponseDto {
+    const userDto = new UserResponseDto();
+    userDto.id = user.id;
+    userDto.email = user.email;
+    userDto.role = user.role;
+    userDto.createdAt = user.createdAt;
+    userDto.updatedAt = user.updatedAt;
+    return userDto;
+  }
 
   async createPath(createPathDto: CreatePathDto) {
     this.logger.log('Creating new path');
@@ -99,7 +172,15 @@ export class PathsService {
     path.distance = totalDistance;
     path.totalTime = totalTime;
 
-    return await this.pathRepository.save(path);
+    const savedPath = await this.pathRepository.save(path);
+    
+    // Reload the path to ensure all relations are loaded
+    const fullPath = await this.pathRepository.findOne({
+      where: { id: savedPath.id },
+      relations: ['pathPlaces', 'pathPlaces.place', 'creator']
+    });
+
+    return this.entityToDto(fullPath);
   }
 
   async findPaths(filterDto: PathFilterDto) {
@@ -107,7 +188,8 @@ export class PathsService {
 
     const queryBuilder = this.pathRepository.createQueryBuilder('path')
       .leftJoinAndSelect('path.pathPlaces', 'pathPlace')
-      .leftJoinAndSelect('pathPlace.place', 'place');
+      .leftJoinAndSelect('pathPlace.place', 'place')
+      .leftJoinAndSelect('path.creator', 'creator');
 
     // Apply filters
     if (filterDto.name) {
@@ -144,7 +226,7 @@ export class PathsService {
     const [paths, total] = await queryBuilder.getManyAndCount();
 
     return {
-      data: paths,
+      data: paths.map(path => this.entityToDto(path)),
       meta: {
         page,
         limit,
@@ -157,14 +239,14 @@ export class PathsService {
   async getPathById(id: string) {
     const path = await this.pathRepository.findOne({
       where: { id },
-      relations: ['pathPlaces', 'pathPlaces.place']
+      relations: ['pathPlaces', 'pathPlaces.place', 'creator']
     });
 
     if (!path) {
       throw new NotFoundException(`Path with ID ${id} not found`);
     }
 
-    return path;
+    return this.entityToDto(path);
   }
 
   async updatePath(id: string, updatePathDto: UpdatePathDto) {
@@ -249,7 +331,15 @@ export class PathsService {
       path.totalTime = totalTime;
     }
 
-    return await this.pathRepository.save(path);
+    const updatedPath = await this.pathRepository.save(path);
+    
+    // Reload the updated path to ensure all relations are loaded
+    const fullPath = await this.pathRepository.findOne({
+      where: { id: updatedPath.id },
+      relations: ['pathPlaces', 'pathPlaces.place', 'creator']
+    });
+
+    return this.entityToDto(fullPath);
   }
 
   async deletePath(id: string) {

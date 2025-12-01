@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, Logger, UnauthorizedException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, Raw } from 'typeorm';
+import { Repository, In, Raw, getConnection } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { Place } from './entities/place.entity';
 import { Tag } from './entities/tag.entity';
@@ -14,6 +14,10 @@ import { User, UserRole } from '../auth/entities/user.entity';
 import { RecommendationsService } from '../recommendations/recommendations.service';
 import { GenerateEmbeddingDto } from '../recommendations/dto/recommendation.dto';
 import { RedisService } from '../common/redis.service';
+import { PlaceResponseDto } from './dto/place/place-response.dto';
+import { TagResponseDto } from './dto/tag/tag-response.dto';
+import { CreateTagDto } from './dto/tag/create-tag.dto';
+import { UpdateTagDto } from './dto/tag/update-tag.dto';
 
 @Injectable()
 export class PlacesService {
@@ -31,32 +35,56 @@ export class PlacesService {
     private redisService: RedisService,
   ) {}
 
-  async createTag
+  // Helper method to convert Place entity to PlaceResponseDto
+  private entityToDto(place: Place): PlaceResponseDto {
+    const dto = new PlaceResponseDto();
+    dto.id = place.id;
+    dto.name = place.name;
+    dto.description = place.description || null;
+    dto.coordinates = place.coordinates;
+    dto.status = place.status;
+    dto.creatorId = place.creatorId || null;
+    dto.moderatorId = place.moderatorId || null;
+    dto.createdAt = place.createdAt;
+    dto.updatedAt = place.updatedAt;
+    
+    // Convert tags to DTOs
+    dto.tags = place.tags?.map(tag => {
+      const tagDto = new TagResponseDto();
+      tagDto.id = tag.id;
+      tagDto.name = tag.name;
+      tagDto.createdAt = tag.createdAt;
+      tagDto.updatedAt = tag.updatedAt;
+      return tagDto;
+    }) || [];
+    
+    return dto;
+  }
 
   async createPlace(createPlaceDto: CreatePlaceDto, creatorId: string) {
     this.logger.log('Creating new place');
 
-    // Generate a UUID for the place
-    const placeId = uuidv4();
+    // Create the place entity
+    const place = new Place();
+    place.name = createPlaceDto.name;
+    place.description = createPlaceDto.description || null;
+    place.coordinates = `POINT(${createPlaceDto.coordinates.longitude} ${createPlaceDto.coordinates.latitude})`;
+    place.status = PlaceStatus.PENDING;
+    place.creatorId = creatorId;
+    place.createdAt = new Date();
+    place.updatedAt = new Date();
 
-    // Insert the place using raw SQL to bypass TypeORM's geometry processing
-    await this.placeRepository.query(
-      `INSERT INTO places (id, name, description, coordinates, "tagIds", status, creator_id, created_at, updated_at)
-       VALUES ($1, $2, $3, ST_SetSRID(ST_Point($4, $5), 4326), $6, $7, $8, NOW(), NOW())`,
-      [
-        placeId,
-        createPlaceDto.name,
-        createPlaceDto.description || null,
-        createPlaceDto.coordinates.longitude,
-        createPlaceDto.coordinates.latitude,
-        createPlaceDto.tagIds && createPlaceDto.tagIds.length > 0 ? createPlaceDto.tagIds.join(',') : null, // Format as comma-separated string for simple-array
-        PlaceStatus.PENDING,
-        creatorId
-      ]
-    );
+    // Handle tags relationship
+    if (createPlaceDto.tagIds && createPlaceDto.tagIds.length > 0) {
+      const tags = await this.tagRepository.findByIds(createPlaceDto.tagIds);
+      if (tags.length !== createPlaceDto.tagIds.length) {
+        throw new BadRequestException('One or more tag IDs are invalid');
+      }
+      place.tags = tags;
+    }
 
-    // Fetch the newly created place
-    const savedPlace = await this.placeRepository.findOne({ where: { id: placeId } });
+    // Save the place with its relationships
+    const savedPlace = await this.placeRepository.save(place);
 
     // Log the submission
     await this.logModerationAction(
@@ -66,7 +94,7 @@ export class PlacesService {
       'Place submitted for review'
     );
 
-    return savedPlace;
+    return this.entityToDto(savedPlace);
   }
 
   async findPlaces(filterDto: PlaceFilterDto) {
@@ -83,8 +111,9 @@ export class PlacesService {
       return cachedResult;
     }
 
-    // Build query with filters
-    const queryBuilder = this.placeRepository.createQueryBuilder('place');
+    // Build query with filters - including relation to tags
+    const queryBuilder = this.placeRepository.createQueryBuilder('place')
+      .leftJoinAndSelect('place.tags', 'tag');
 
     // Apply name filter
     if (filterDto.name) {
@@ -98,8 +127,7 @@ export class PlacesService {
 
     // Apply tag IDs filter
     if (filterDto.tagIds && filterDto.tagIds.length > 0) {
-      // Since we're storing tagIds as a simple array, we check if any of the provided tag IDs are in the array
-      queryBuilder.andWhere('place.tagIds && ARRAY[:...tagIds]', { tagIds: filterDto.tagIds });
+      queryBuilder.andWhere('tag.id IN (:...tagIds)', { tagIds: filterDto.tagIds });
     }
 
     // Apply location-based filter (geospatial)
@@ -126,8 +154,11 @@ export class PlacesService {
     // Execute query
     const [places, total] = await queryBuilder.getManyAndCount();
 
+    // Convert to DTOs
+    const placesDto = places.map(place => this.entityToDto(place));
+
     const result = {
-      data: places,
+      data: placesDto,
       meta: {
         page,
         limit,
@@ -144,19 +175,25 @@ export class PlacesService {
   }
 
   async getPlaceById(id: string) {
-    const place = await this.placeRepository.findOne({ where: { id } });
+    const place = await this.placeRepository.findOne({
+      where: { id },
+      relations: ['tags', 'creator', 'moderator', 'moderationLogs']
+    });
 
     if (!place) {
       throw new NotFoundException(`Place with ID ${id} not found`);
     }
 
-    return place;
+    return this.entityToDto(place);
   }
 
   async updatePlace(id: string, updatePlaceDto: UpdatePlaceDto, updaterId?: string) {
     this.logger.log(`Updating place with ID: ${id}`);
 
-    const place = await this.placeRepository.findOne({ where: { id } });
+    const place = await this.placeRepository.findOne({
+      where: { id },
+      relations: ['tags']
+    });
 
     if (!place) {
       throw new NotFoundException(`Place with ID ${id} not found`);
@@ -176,22 +213,27 @@ export class PlacesService {
     if (updatePlaceDto.description !== undefined) {
       place.description = updatePlaceDto.description;
     }
-    if (updatePlaceDto.tagIds) {
-      place.tagIds = updatePlaceDto.tagIds;
+
+    // Update coordinates if provided
+    if (updatePlaceDto.coordinates) {
+      place.coordinates = `POINT(${updatePlaceDto.coordinates.longitude} ${updatePlaceDto.coordinates.latitude})`;
+    }
+
+    // Handle tags relationship if provided
+    if (updatePlaceDto.tagIds !== undefined) {
+      if (updatePlaceDto.tagIds.length > 0) {
+        const tags = await this.tagRepository.findByIds(updatePlaceDto.tagIds);
+        if (tags.length !== updatePlaceDto.tagIds.length) {
+          throw new BadRequestException('One or more tag IDs are invalid');
+        }
+        place.tags = tags;
+      } else {
+        // If empty array provided, clear all tags
+        place.tags = [];
+      }
     }
 
     const updatedPlace = await this.placeRepository.save(place);
-
-    // Update coordinates separately using raw query if provided to avoid TypeORM geometry parsing
-    if (updatePlaceDto.coordinates) {
-      await this.placeRepository.query(
-        `UPDATE places SET coordinates = ST_SetSRID(ST_Point($1, $2), 4326) WHERE id = $3`,
-        [updatePlaceDto.coordinates.longitude, updatePlaceDto.coordinates.latitude, updatedPlace.id]
-      );
-
-      // Update the coordinates for the returned object
-      updatedPlace.coordinates = `POINT(${updatePlaceDto.coordinates.longitude} ${updatePlaceDto.coordinates.latitude})`;
-    }
 
     // Log the update
     await this.logModerationAction(
@@ -201,13 +243,16 @@ export class PlacesService {
       'Place updated by user'
     );
 
-    return updatedPlace;
+    return this.entityToDto(updatedPlace);
   }
 
   async approvePlace(id: string, moderatorId: string, reason?: string) {
     this.logger.log(`Approving place with ID: ${id}, moderator: ${moderatorId}, reason: ${reason}`);
 
-    const place = await this.placeRepository.findOne({ where: { id } });
+    const place = await this.placeRepository.findOne({
+      where: { id },
+      relations: ['tags']
+    });
 
     if (!place) {
       throw new NotFoundException(`Place with ID ${id} not found`);
@@ -227,11 +272,13 @@ export class PlacesService {
 
     // Generate embedding for the place after approval
     try {
+      // Extract tag names for embedding generation
+      const tagNames = place.tags ? place.tags.map(tag => tag.name) : [];
       const generateEmbeddingDto: GenerateEmbeddingDto = {
         placeId: place.id,
         name: place.name,
         description: place.description || '',
-        tags: place.tagIds || [],
+        tags: tagNames,
       };
 
       await this.recommendationsService.generateEmbedding(generateEmbeddingDto);
@@ -241,13 +288,16 @@ export class PlacesService {
       this.logger.error(`Failed to generate embedding for place ${place.id}: ${error.message}`);
     }
 
-    return updatedPlace;
+    return this.entityToDto(updatedPlace);
   }
 
   async rejectPlace(id: string, moderatorId: string, reason?: string) {
     this.logger.log(`Rejecting place with ID: ${id}, moderator: ${moderatorId}, reason: ${reason}`);
 
-    const place = await this.placeRepository.findOne({ where: { id } });
+    const place = await this.placeRepository.findOne({
+      where: { id },
+      relations: ['tags']
+    });
 
     if (!place) {
       throw new NotFoundException(`Place with ID ${id} not found`);
@@ -255,7 +305,7 @@ export class PlacesService {
 
     place.status = PlaceStatus.REJECTED;
     place.moderatorId = moderatorId; // Track who rejected it
-    await this.placeRepository.save(place);
+    const updatedPlace = await this.placeRepository.save(place);
 
     // Log the rejection
     await this.logModerationAction(
@@ -265,7 +315,7 @@ export class PlacesService {
       reason || 'Place rejected'
     );
 
-    return place;
+    return this.entityToDto(updatedPlace);
   }
 
   private async logModerationAction(
@@ -291,5 +341,129 @@ export class PlacesService {
       return false;
     }
     return user.role === UserRole.MODERATOR || user.role === UserRole.ADMIN;
+  }
+  
+  // Methods for tag management
+  
+  async createTag(createTagDto: CreateTagDto) {
+    this.logger.log('Creating new tag');
+    
+    // Check if tag with this name already exists
+    const existingTag = await this.tagRepository.findOne({
+      where: { name: createTagDto.name }
+    });
+    
+    if (existingTag) {
+      throw new BadRequestException('A tag with this name already exists');
+    }
+    
+    const tag = new Tag();
+    tag.name = createTagDto.name;
+    tag.createdAt = new Date();
+    tag.updatedAt = new Date();
+    
+    const savedTag = await this.tagRepository.save(tag);
+    
+    // Convert to DTO and return
+    const tagDto = new TagResponseDto();
+    tagDto.id = savedTag.id;
+    tagDto.name = savedTag.name;
+    tagDto.createdAt = savedTag.createdAt;
+    tagDto.updatedAt = savedTag.updatedAt;
+    
+    return tagDto;
+  }
+  
+  async getAllTags(): Promise<TagResponseDto[]> {
+    this.logger.log('Getting all tags');
+    
+    const tags = await this.tagRepository.find({
+      order: { name: 'ASC' }
+    });
+    
+    return tags.map(tag => {
+      const tagDto = new TagResponseDto();
+      tagDto.id = tag.id;
+      tagDto.name = tag.name;
+      tagDto.createdAt = tag.createdAt;
+      tagDto.updatedAt = tag.updatedAt;
+      return tagDto;
+    });
+  }
+  
+  async getTagById(id: string): Promise<TagResponseDto> {
+    this.logger.log(`Getting tag with ID: ${id}`);
+    
+    const tag = await this.tagRepository.findOne({ where: { id } });
+    
+    if (!tag) {
+      throw new NotFoundException(`Tag with ID ${id} not found`);
+    }
+    
+    const tagDto = new TagResponseDto();
+    tagDto.id = tag.id;
+    tagDto.name = tag.name;
+    tagDto.createdAt = tag.createdAt;
+    tagDto.updatedAt = tag.updatedAt;
+    
+    return tagDto;
+  }
+  
+  async updateTag(id: string, updateTagDto: UpdateTagDto): Promise<TagResponseDto> {
+    this.logger.log(`Updating tag with ID: ${id}`);
+    
+    const tag = await this.tagRepository.findOne({ where: { id } });
+    
+    if (!tag) {
+      throw new NotFoundException(`Tag with ID ${id} not found`);
+    }
+    
+    // Check if the new name already exists (excluding current tag)
+    if (updateTagDto.name) {
+      const existingTag = await this.tagRepository.findOne({
+        where: { name: updateTagDto.name, id: Raw(alias => `${alias} != :id`, { id }) }
+      });
+      
+      if (existingTag) {
+        throw new BadRequestException('A tag with this name already exists');
+      }
+      
+      tag.name = updateTagDto.name;
+    }
+    
+    tag.updatedAt = new Date();
+    
+    const updatedTag = await this.tagRepository.save(tag);
+    
+    const tagDto = new TagResponseDto();
+    tagDto.id = updatedTag.id;
+    tagDto.name = updatedTag.name;
+    tagDto.createdAt = updatedTag.createdAt;
+    tagDto.updatedAt = updatedTag.updatedAt;
+    
+    return tagDto;
+  }
+  
+  async deleteTag(id: string): Promise<void> {
+    this.logger.log(`Deleting tag with ID: ${id}`);
+    
+    const tag = await this.tagRepository.findOne({ where: { id } });
+    
+    if (!tag) {
+      throw new NotFoundException(`Tag with ID ${id} not found`);
+    }
+    
+    // Check if any places are using this tag
+    const placesWithThisTag = await this.placeRepository
+      .createQueryBuilder('place')
+      .innerJoin('place.tags', 'tag')
+      .where('tag.id = :tagId', { tagId: id })
+      .getCount();
+      
+    if (placesWithThisTag > 0) {
+      throw new BadRequestException('Cannot delete tag because it is associated with one or more places');
+    }
+    
+    await this.tagRepository.delete(id);
   }
 }

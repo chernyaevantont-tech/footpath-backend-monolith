@@ -19,6 +19,8 @@ import { CreatePathDto } from './dto/create-path.dto';
 import { UpdatePathDto } from './dto/update-path.dto';
 import { GeneratePathDto } from './dto/generate-path.dto';
 import { PathFilterDto } from './dto/path-filter.dto';
+import { PathResponseDto } from './dto/path-response.dto';
+import { PathsListResponseDto } from './dto/paths-list-response.dto';
 
 @ApiTags('Paths')
 @Controller('paths')
@@ -36,24 +38,7 @@ export class PathsController {
   @ApiResponse({
     status: 201,
     description: 'Path created successfully',
-    schema: {
-      example: {
-        id: 'uuid-string',
-        name: 'Morning Walk',
-        description: 'A nice morning walk around the park',
-        distance: 3.5,
-        totalTime: 60,
-        places: [
-          {
-            id: 'place-uuid',
-            name: 'Central Park',
-            description: 'A beautiful park'
-          }
-        ],
-        createdAt: '2023-01-01T00:00:00.000Z',
-        updatedAt: '2023-01-01T00:00:00.000Z'
-      }
-    }
+    type: PathResponseDto
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async createPath(@Body() createPathDto: CreatePathDto) {
@@ -70,29 +55,7 @@ export class PathsController {
   @ApiResponse({
     status: 201,
     description: 'Path generated successfully',
-    schema: {
-      example: {
-        id: 'uuid-string',
-        name: 'Generated Walk',
-        description: 'A walk generated based on your criteria',
-        distance: 2.8,
-        totalTime: 45,
-        places: [
-          {
-            id: 'place-uuid1',
-            name: 'Park A',
-            description: 'Beautiful park A'
-          },
-          {
-            id: 'place-uuid2',
-            name: 'Café B',
-            description: 'Nice café'
-          }
-        ],
-        createdAt: '2023-01-01T00:00:00.000Z',
-        updatedAt: '2023-01-01T00:00:00.000Z'
-      }
-    }
+    type: PathResponseDto
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async generatePath(@Body() generatePathDto: GeneratePathDto) {
@@ -109,19 +72,7 @@ export class PathsController {
   @ApiResponse({
     status: 200,
     description: 'Paths retrieved successfully',
-    schema: {
-      example: [
-        {
-          id: 'uuid-string',
-          name: 'Morning Walk',
-          description: 'A nice morning walk around the park',
-          distance: 3.5,
-          totalTime: 60,
-          createdAt: '2023-01-01T00:00:00.000Z',
-          updatedAt: '2023-01-01T00:00:00.000Z'
-        }
-      ]
-    }
+    type: PathsListResponseDto
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async findPaths(@Query() pathFilterDto: PathFilterDto) {
@@ -138,24 +89,7 @@ export class PathsController {
   @ApiResponse({
     status: 200,
     description: 'Path retrieved successfully',
-    schema: {
-      example: {
-        id: 'uuid-string',
-        name: 'Morning Walk',
-        description: 'A nice morning walk around the park',
-        distance: 3.5,
-        totalTime: 60,
-        places: [
-          {
-            id: 'place-uuid',
-            name: 'Central Park',
-            description: 'A beautiful park'
-          }
-        ],
-        createdAt: '2023-01-01T00:00:00.000Z',
-        updatedAt: '2023-01-01T00:00:00.000Z'
-      }
-    }
+    type: PathResponseDto
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Path not found' })
@@ -174,24 +108,7 @@ export class PathsController {
   @ApiResponse({
     status: 200,
     description: 'Path updated successfully',
-    schema: {
-      example: {
-        id: 'uuid-string',
-        name: 'Updated Morning Walk',
-        description: 'An updated morning walk around the park',
-        distance: 3.7,
-        totalTime: 65,
-        places: [
-          {
-            id: 'place-uuid',
-            name: 'Central Park',
-            description: 'A beautiful updated park'
-          }
-        ],
-        createdAt: '2023-01-01T00:00:00.000Z',
-        updatedAt: '2023-01-02T00:00:00.000Z'
-      }
-    }
+    type: PathResponseDto
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Path not found' })

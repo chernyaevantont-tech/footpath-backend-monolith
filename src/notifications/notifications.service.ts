@@ -4,6 +4,7 @@ import { Repository, In } from 'typeorm';
 import { Notification, NotificationType } from './entities/notification.entity';
 import { CreateNotificationDto, UpdateNotificationDto, BulkReadNotificationsDto } from './dto/notification.dto';
 import { User } from '../auth/entities/user.entity';
+import { NotificationResponseDto } from './dto/notification-response.dto';
 
 @Injectable()
 export class NotificationsService {
@@ -16,7 +17,21 @@ export class NotificationsService {
     private userRepository: Repository<User>,
   ) {}
 
-  async createNotification(createNotificationDto: CreateNotificationDto): Promise<Notification> {
+  // Helper method to convert Notification entity to NotificationResponseDto
+  private entityToDto(notification: Notification): NotificationResponseDto {
+    const dto = new NotificationResponseDto();
+    dto.id = notification.id;
+    dto.userId = notification.userId;
+    dto.type = notification.type;
+    dto.title = notification.title;
+    dto.message = notification.message;
+    dto.isRead = notification.isRead;
+    dto.createdAt = notification.createdAt;
+    dto.updatedAt = notification.updatedAt;
+    return dto;
+  }
+
+  async createNotification(createNotificationDto: CreateNotificationDto): Promise<NotificationResponseDto> {
     this.logger.log(`Creating notification for user ID: ${createNotificationDto.userId}, type: ${createNotificationDto.type}`);
 
     // Verify user exists
@@ -35,10 +50,10 @@ export class NotificationsService {
     const createdNotification = await this.notificationRepository.save(notification);
     this.logger.log(`Notification created successfully with ID: ${createdNotification.id}`);
 
-    return createdNotification;
+    return this.entityToDto(createdNotification);
   }
 
-  async getUserNotifications(userId: string): Promise<Notification[]> {
+  async getUserNotifications(userId: string): Promise<NotificationResponseDto[]> {
     this.logger.log(`Fetching notifications for user ID: ${userId}`);
 
     const notifications = await this.notificationRepository.find({
@@ -47,10 +62,11 @@ export class NotificationsService {
     });
 
     this.logger.log(`Found ${notifications.length} notifications for user ID: ${userId}`);
-    return notifications;
+    
+    return notifications.map(notification => this.entityToDto(notification));
   }
 
-  async markAsRead(notificationId: string, userId: string): Promise<Notification> {
+  async markAsRead(notificationId: string, userId: string): Promise<NotificationResponseDto> {
     this.logger.log(`Marking notification ${notificationId} as read for user ID: ${userId}`);
 
     const notification = await this.notificationRepository.findOne({
@@ -67,7 +83,7 @@ export class NotificationsService {
     const updatedNotification = await this.notificationRepository.save(notification);
     this.logger.log(`Notification ${notificationId} marked as read`);
 
-    return updatedNotification;
+    return this.entityToDto(updatedNotification);
   }
 
   async bulkMarkAsRead(bulkReadDto: BulkReadNotificationsDto, userId: string): Promise<number> {
@@ -86,7 +102,7 @@ export class NotificationsService {
     return affected || 0;
   }
 
-  async sendNotificationToUser(userId: string, type: NotificationType, title: string, message: string): Promise<Notification> {
+  async sendNotificationToUser(userId: string, type: NotificationType, title: string, message: string): Promise<NotificationResponseDto> {
     this.logger.log(`Sending notification to user ${userId} with type ${type}`);
 
     const createDto: CreateNotificationDto = {

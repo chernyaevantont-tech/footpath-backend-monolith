@@ -9,6 +9,10 @@ import { CreateWalkDto } from './dto/create-walk.dto';
 import { UpdateWalkDto } from './dto/update-walk.dto';
 import { CompleteWalkDto } from './dto/complete-walk.dto';
 import { WalkStatus } from './entities/walk.entity';
+import { WalkResponseDto } from './dto/walk-response.dto';
+import { WalkParticipantResponseDto } from './dto/walk-participant-response.dto';
+import { WalksListResponseDto } from './dto/walks-list-response.dto';
+import { UserResponseDto } from '../auth/dto/user-response.dto';
 
 @Injectable()
 export class WalksService {
@@ -24,6 +28,61 @@ export class WalksService {
     @InjectRepository(Path)
     private pathRepository: Repository<Path>,
   ) {}
+
+  // Helper method to convert Walk entity to WalkResponseDto
+  private entityToDto(walk: Walk): WalkResponseDto {
+    const dto = new WalkResponseDto();
+    dto.id = walk.id;
+    dto.title = walk.title;
+    dto.description = walk.description || null;
+    dto.pathId = walk.pathId || null;
+    dto.startTime = walk.startTime || null;
+    dto.endTime = walk.endTime || null;
+    dto.status = walk.status;
+    dto.creatorId = walk.creatorId;
+    dto.createdAt = walk.createdAt;
+    dto.updatedAt = walk.updatedAt;
+
+    // Convert participants to DTOs
+    if (walk.participants) {
+      dto.participants = walk.participants.map(participant => {
+        const participantDto = new WalkParticipantResponseDto();
+        participantDto.walkId = participant.walkId;
+        participantDto.userId = participant.userId;
+        participantDto.status = participant.status;
+        participantDto.joinedAt = participant.joinedAt || null;
+        participantDto.respondedAt = participant.respondedAt || null;
+        participantDto.createdAt = participant.createdAt;
+        participantDto.attended = participant.attended || null;
+        
+        // Map the user information if available
+        if (participant.user) {
+          participantDto.user = this.mapUserToDto(participant.user);
+        }
+
+        return participantDto;
+      });
+    } else {
+      dto.participants = [];
+    }
+
+    // Map the creator if available
+    if (walk.creator) {
+      dto.creator = this.mapUserToDto(walk.creator);
+    }
+
+    return dto;
+  }
+
+  private mapUserToDto(user: any): UserResponseDto {
+    const userDto = new UserResponseDto();
+    userDto.id = user.id;
+    userDto.email = user.email;
+    userDto.role = user.role;
+    userDto.createdAt = user.createdAt;
+    userDto.updatedAt = user.updatedAt;
+    return userDto;
+  }
 
   async createWalk(creatorId: string, createWalkDto: CreateWalkDto) {
     this.logger.log(`Creating walk for user ${creatorId}`);
@@ -70,7 +129,13 @@ export class WalksService {
       await this.createInvitationsWithoutValidation(savedWalk.id, createWalkDto.inviteeIds);
     }
 
-    return savedWalk;
+    // Reload the walk with all relations to return proper DTO
+    const fullWalk = await this.walkRepository.findOne({
+      where: { id: savedWalk.id },
+      relations: ['participants', 'participants.user', 'creator', 'path']
+    });
+
+    return this.entityToDto(fullWalk);
   }
 
   // Helper method to create invitations during walk creation without validation
@@ -126,6 +191,7 @@ export class WalksService {
     const queryBuilder = this.walkRepository.createQueryBuilder('walk')
       .leftJoin(WalkParticipant, 'participant', 'participant.walkId = walk.id')
       .leftJoin(Path, 'path', 'path.id = walk.pathId')
+      .leftJoinAndSelect('walk.creator', 'creator')
       .where('(walk.creatorId = :userId OR participant.userId = :userId)', { userId })
       .addOrderBy('walk.createdAt', 'DESC');
 
@@ -148,7 +214,7 @@ export class WalksService {
       .getManyAndCount();
 
     return {
-      data: walks,
+      data: walks.map(walk => this.entityToDto(walk)),
       meta: {
         page,
         limit,
@@ -178,7 +244,7 @@ export class WalksService {
       throw new ForbiddenException('Access denied: You are not a participant or creator of this walk');
     }
 
-    return walk;
+    return this.entityToDto(walk);
   }
 
   async updateWalk(id: string, userId: string, updateWalkDto: UpdateWalkDto) {
@@ -210,7 +276,15 @@ export class WalksService {
     if (updateWalkDto.startTime) walk.startTime = new Date(updateWalkDto.startTime);
     if (updateWalkDto.endTime) walk.endTime = new Date(updateWalkDto.endTime);
 
-    return await this.walkRepository.save(walk);
+    const updatedWalk = await this.walkRepository.save(walk);
+    
+    // Reload the walk with all relations to return proper DTO
+    const fullWalk = await this.walkRepository.findOne({
+      where: { id: updatedWalk.id },
+      relations: ['participants', 'participants.user', 'creator', 'path']
+    });
+
+    return this.entityToDto(fullWalk);
   }
 
   async inviteParticipants(creatorId: string, walkId: string, userIds: string[]) {
@@ -263,7 +337,14 @@ export class WalksService {
     // In a real implementation, we would send notifications here
     // For now, we'll just log that invitations were sent
     this.logger.log(`Walk invitations sent to ${userIds.length} users for walk ${walkId}`);
-    return savedParticipants;
+    
+    // Reload the walk to get updated participant list
+    const updatedWalk = await this.walkRepository.findOne({
+      where: { id: walkId },
+      relations: ['participants', 'participants.user', 'creator', 'path']
+    });
+    
+    return this.entityToDto(updatedWalk);
   }
 
   async respondToInvitation(userId: string, walkId: string, status: ParticipantStatus) {
@@ -291,9 +372,15 @@ export class WalksService {
       participant.joinedAt = new Date();
     }
 
-    const updatedParticipant = await this.walkParticipantRepository.save(participant);
+    await this.walkParticipantRepository.save(participant);
 
-    return updatedParticipant;
+    // Reload the walk to get updated participant list
+    const updatedWalk = await this.walkRepository.findOne({
+      where: { id: walkId },
+      relations: ['participants', 'participants.user', 'creator', 'path']
+    });
+    
+    return this.entityToDto(updatedWalk);
   }
 
   async completeWalk(userId: string, walkId: string, completeWalkDto?: CompleteWalkDto) {
@@ -328,7 +415,13 @@ export class WalksService {
     await this.updateParticipantStats(userId, walkId);
     await this.saveVisitedPlacesHistory(walkId);
 
-    return updatedWalk;
+    // Reload the walk to get updated participant list
+    const fullWalk = await this.walkRepository.findOne({
+      where: { id: updatedWalk.id },
+      relations: ['participants', 'participants.user', 'creator', 'path']
+    });
+    
+    return this.entityToDto(fullWalk);
   }
 
   async deleteWalk(id: string, userId: string) {

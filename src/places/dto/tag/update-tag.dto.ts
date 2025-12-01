@@ -1,6 +1,5 @@
 import { ApiProperty } from "@nestjs/swagger";
-import { IsNotEmpty } from "class-validator";
-import { IsString } from "class-validator/types/decorator/typechecker/IsString";
+import { IsNotEmpty, IsString } from "class-validator";
 
 export class UpdateTagDto {
   @ApiProperty({
