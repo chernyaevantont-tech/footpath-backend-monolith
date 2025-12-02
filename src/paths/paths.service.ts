@@ -66,7 +66,7 @@ export class PathsService {
           placeDto.moderatorId = pathPlace.place.moderatorId || null;
           placeDto.createdAt = pathPlace.place.createdAt;
           placeDto.updatedAt = pathPlace.place.updatedAt;
-          placeDto.tags = pathPlace.place.categories ? pathPlace.place.categories.map(tag => {
+          placeDto.tags = pathPlace.place.tags ? pathPlace.place.tags.map(tag => {
             const tagDto = new (require('../places/dto/tag/tag-response.dto').TagResponseDto)();
             tagDto.id = tag.id;
             tagDto.name = tag.name;
