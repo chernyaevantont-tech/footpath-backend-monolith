@@ -44,8 +44,26 @@ export class PlacesController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Forbidden' })
   async createPlace(@Body() createPlaceDto: CreatePlaceDto, @Request() req) {
-    this.logger.log('Creating new place');
-    return await this.placesService.createPlace(createPlaceDto, req.user.id);
+    this.logger.log('Creating new place', {
+      userId: req.user.id,
+      coordinates: createPlaceDto.coordinates,
+      name: createPlaceDto.name,
+      description: createPlaceDto.description,
+      tagIds: createPlaceDto.tagIds
+    });
+    try {
+      const result = await this.placesService.createPlace(createPlaceDto, req.user.id);
+      this.logger.log('Successfully created place', { placeId: result.id });
+      return result;
+    } catch (error) {
+      this.logger.error('Failed to create place', {
+        error: error.message,
+        stack: error.stack,
+        userId: req.user.id,
+        coordinates: createPlaceDto.coordinates
+      });
+      throw error;
+    }
   }
 
   @UseGuards(JwtAuthGuard)

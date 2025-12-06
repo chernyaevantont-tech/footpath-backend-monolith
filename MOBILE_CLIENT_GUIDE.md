@@ -33,6 +33,13 @@ This document provides comprehensive guidance for developing a mobile client for
   - User profile data
 - **Data synchronization** between local and remote databases
 
+#### Backend Infrastructure
+The backend uses Redis for caching to improve performance:
+- **Session storage**: User session data is cached in Redis for faster authentication
+- **User profile caching**: User profile data is cached to reduce database queries
+- **API response caching**: Frequent API responses are cached to improve response times
+- **Session management**: JWT tokens are associated with session data in Redis for enhanced security and management
+
 ## API Integration
 
 ### Available APIs
@@ -73,6 +80,12 @@ This document provides comprehensive guidance for developing a mobile client for
   - Request Body: `{"token": "string", "password": "string"}`
   - Response: `{"message": "Password updated successfully"}`
   - Error Codes: 400 (Invalid token)
+
+- `POST /auth/register-moderator` - Admin register a new moderator/admin user (admin only)
+  - Headers: `Authorization: Bearer <token>`
+  - Request Body: `{"email": "string", "password": "string", "role": "moderator|admin"}`
+  - Response: `{"user": {"id": "string", "email": "string", "role": "string"}, "token": "string"}`
+  - Error Codes: 401 (Unauthorized), 403 (Forbidden - only admins can register moderators), 400 (Bad Request - invalid role, email already exists, weak password, etc.)
 
 #### Places APIs
 - `POST /places` - Create a new place (pending moderation)
@@ -137,10 +150,6 @@ The Place object returned by these APIs now includes:
   - Response: `{"message": "Friend removed successfully"}`
   - Error Codes: 401 (Unauthorized), 404 (Friend not found)
 
-- `GET /friends/recommendations` - Get friend recommendations
-  - Headers: `Authorization: Bearer <token>`
-  - Response: `{"data": [{"id": "string", "email": "string", "name": "string", "commonFriends": "number"}]}`
-  - Error Codes: 401 (Unauthorized)
 
 #### Paths APIs
 - `POST /paths/generate` - Generate a path based on criteria
@@ -157,7 +166,7 @@ The Place object returned by these APIs now includes:
 
 - `GET /paths` - Get saved paths
   - Headers: `Authorization: Bearer <token>`
-  - Query Params: `?page=number&limit=number`
+  - Query Params: `?page=number&limit=number&status=string&startDate=string&endDate=string`
   - Response: `{"data": [...], "meta": {"page": "number", "limit": "number", "total": "number", "pages": "number"}}`
   - Error Codes: 401 (Unauthorized)
 
@@ -185,7 +194,7 @@ The Place object returned by these APIs now includes:
 
 - `GET /walks` - Get list of walks
   - Headers: `Authorization: Bearer <token>`
-  - Query Params: `?status=string&date=string`
+  - Query Params: `?page=number&limit=number&status=string&startDate=string&endDate=string`
   - Response: `{"data": [...], "meta": {"page": "number", "limit": "number", "total": "number", "pages": "number"}}`
   - Error Codes: 401 (Unauthorized)
 
@@ -198,6 +207,12 @@ The Place object returned by these APIs now includes:
   - Headers: `Authorization: Bearer <token>`
   - Request Body: `{"userIds": ["string"]}`
   - Response: `{"message": "Invitations sent", "invitations": [...]}`
+  - Error Codes: 401 (Unauthorized), 404 (Walk not found)
+
+- `POST /walks/{id}/respond` - Respond to a walk invitation (accept/decline)
+  - Headers: `Authorization: Bearer <token>`
+  - Request Body: `{"status": "accepted|declined"}`
+  - Response: `{"id": "string", "title": "string", "path": {...}, "status": "string", "participants": [...]}`
   - Error Codes: 401 (Unauthorized), 404 (Walk not found)
 
 - `POST /walks/{id}/complete` - Complete a walk
@@ -228,16 +243,21 @@ The Place object returned by these APIs now includes:
   - Response: `{"message": "Notifications marked as read", "count": "number"}`
   - Error Codes: 401 (Unauthorized)
 
+- `POST /notifications/mark-all-read` - Mark all notifications as read
+  - Headers: `Authorization: Bearer <token>`
+  - Response: `{"affected": "number"}`
+  - Error Codes: 401 (Unauthorized)
+
 #### Recommendations APIs
 - `GET /recommendations/places` - Get place recommendations
   - Headers: `Authorization: Bearer <token>`
-  - Query Params: `?limit=number&tags=["string"]`
+  - Query Params: `?limit=number&tags=["string"]&userId=string`
   - Response: `{"data": [{"id": "string", "name": "string", "description": "string", ...}], "count": "number"}`
   - Error Codes: 401 (Unauthorized)
 
 - `GET /recommendations/paths` - Get path recommendations
   - Headers: `Authorization: Bearer <token>`
-  - Query Params: `?limit=number&tags=["string"]`
+  - Query Params: `?limit=number&tags=["string"]&userId=string`
   - Response: `{"data": [{"id": "string", "name": "string", "places": [...]}, ...], "count": "number"}`
   - Error Codes: 401 (Unauthorized)
 
@@ -246,14 +266,29 @@ The Place object returned by these APIs now includes:
   - Response: `{"message": "Embeddings generation started", "processed": "number"}`
   - Error Codes: 401 (Unauthorized), 403 (Forbidden)
 
+### API Response Caching
+The backend implements caching for improved performance:
+- **Session caching**: User session data is cached in Redis after login for faster authentication
+- **User profile caching**: Profile data is cached for 1 hour to reduce database load
+- **API result caching**: Some API responses are cached to improve response times
+
+Mobile clients should be aware that:
+- User profile updates may have a slight delay before reflecting across all API calls (up to 1 hour)
+- Session data on the server-side is maintained in Redis for enhanced security and management
+
 ## UI/UX Design Specifications
 
 ### New Place Creator Tracking Feature
-The system now tracks which user proposed each place. This enables:
+The system now tracks which user proposed each place with the following fields:
+- `creatorId` - The ID of the user who proposed the place
+- `moderatorId` - The ID of the moderator who approved/rejected the place (null if pending)
+
+This enables:
 - Users to see who recommended places they visit
 - Moderators to review places by specific users
 - Better accountability for submitted content
 - Potential social features based on place recommendations
+- Enhanced moderation capabilities to identify repeat contributors
 
 ### Role-Based Interface
 The mobile application will have different UI flows based on user role:
@@ -278,6 +313,8 @@ The mobile application will have different UI flows based on user role:
 - User management
 - System statistics
 - Full moderation capabilities
+- Generate embeddings for all places functionality
+- Register new moderators and admins
 
 ### Core UI Components
 
@@ -354,17 +391,19 @@ data class Friend(
 )
 ```
 
-#### Notification Entity
+#### Walk Entity
 ```
-@Entity(tableName = "notifications")
-data class Notification(
-    @PrimaryKey val notificationId: String,
-    val userId: String,
-    val type: String,
+@Entity(tableName = "walks")
+data class Walk(
+    @PrimaryKey val walkId: String,
     val title: String,
-    val message: String,
-    val isRead: Boolean,
-    val createdAt: Date
+    val pathId: String,
+    val status: String, // "pending", "active", "completed"
+    val startTime: Date,
+    val endTime: Date,
+    val participants: List<String>, // list of user IDs
+    val createdAt: Date,
+    val updatedAt: Date
 )
 ```
 
@@ -382,6 +421,7 @@ data class Path(
     val updatedAt: Date
 )
 ```
+
 
 ### Caching Strategy
 - **Offline Support**: Critical data cached for offline use

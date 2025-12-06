@@ -64,41 +64,94 @@ export class PlacesService {
   async createPlace(createPlaceDto: CreatePlaceDto, creatorId: string) {
     this.logger.log('Creating new place');
 
-    // Create the place entity
-    const place = new Place();
-    place.name = createPlaceDto.name;
-    place.description = createPlaceDto.description || null;
-    place.coordinates = `POINT(${createPlaceDto.coordinates.longitude} ${createPlaceDto.coordinates.latitude})`;
-    place.status = PlaceStatus.PENDING;
-    place.creatorId = creatorId;
-    place.createdAt = new Date();
-    place.updatedAt = new Date();
+    try {
+      // Create the place entity with WKT format
+      const place = new Place();
+      place.name = createPlaceDto.name;
+      place.description = createPlaceDto.description || null;
+      // Create WKT string format: 'POINT(longitude latitude)'
+      const wktString = `POINT(${createPlaceDto.coordinates.longitude} ${createPlaceDto.coordinates.latitude})`;
+      place.status = PlaceStatus.PENDING;
+      place.creatorId = creatorId;
+      place.createdAt = new Date();
+      place.updatedAt = new Date();
 
-    // Handle tags relationship
-    if (createPlaceDto.tagIds && createPlaceDto.tagIds.length > 0) {
-      const tags = await this.tagRepository.findByIds(createPlaceDto.tagIds);
-      if (tags.length !== createPlaceDto.tagIds.length) {
-        throw new BadRequestException('One or more tag IDs are invalid');
+      // Handle tags relationship
+      let tagsToAssign = [];
+      if (createPlaceDto.tagIds && createPlaceDto.tagIds.length > 0) {
+        const tags = await this.tagRepository.findByIds(createPlaceDto.tagIds);
+        if (tags.length !== createPlaceDto.tagIds.length) {
+          throw new BadRequestException('One or more tag IDs are invalid');
+        }
+        tagsToAssign = tags;
       }
-      place.tags = tags;
+
+      // Use raw query with proper PostGIS functions for geometry
+      const queryRunner = this.placeRepository.manager.connection.createQueryRunner();
+      await queryRunner.connect();
+      await queryRunner.startTransaction();
+
+      try {
+        // Insert the place using raw SQL with proper ST_GeomFromText function
+        const result = await queryRunner.query(
+          `INSERT INTO places (id, name, description, coordinates, status, creator_id, created_at, updated_at)
+           VALUES (DEFAULT, $1, $2, ST_SetSRID(ST_GeomFromText($3), 4326), $4, $5, $6, $7)
+           RETURNING id`,
+          [
+            place.name,
+            place.description,
+            wktString,
+            place.status,
+            place.creatorId,
+            place.createdAt,
+            place.updatedAt
+          ]
+        );
+
+        const placeId = result[0].id;
+
+        // If there are tags, insert them into the place_tags junction table
+        if (tagsToAssign.length > 0) {
+          for (const tag of tagsToAssign) {
+            await queryRunner.query(
+              `INSERT INTO place_tags (place_id, tag_id) VALUES ($1, $2)`,
+              [placeId, tag.id]
+            );
+          }
+        }
+
+        await queryRunner.commitTransaction();
+
+        // Return the complete place object
+        const savedPlace = await this.placeRepository.findOne({
+          where: { id: placeId },
+          relations: ['tags']
+        });
+
+        // Log the submission
+        await this.logModerationAction(
+          savedPlace.id,
+          null,
+          ModerationAction.SUBMITTED,
+          'Place submitted for review'
+        );
+
+        this.logger.log(`Successfully created place with ID: ${savedPlace.id}`);
+        return this.entityToDto(savedPlace);
+      } catch (error) {
+        await queryRunner.rollbackTransaction();
+        throw error;
+      } finally {
+        await queryRunner.release();
+      }
+    } catch (error) {
+      this.logger.error(`Error creating place: ${error.message}`, error.stack);
+      throw error;
     }
-
-    // Save the place with its relationships
-    const savedPlace = await this.placeRepository.save(place);
-
-    // Log the submission
-    await this.logModerationAction(
-      savedPlace.id,
-      null,
-      ModerationAction.SUBMITTED,
-      'Place submitted for review'
-    );
-
-    return this.entityToDto(savedPlace);
   }
 
   async findPlaces(filterDto: PlaceFilterDto) {
-    this.logger.log('Finding places with filters');
+    this.logger.log('Finding places with filters', { filterDto });
 
     // Generate cache key from filter parameters
     const filterKey = JSON.stringify(filterDto);
@@ -111,80 +164,95 @@ export class PlacesService {
       return cachedResult;
     }
 
-    // Build query with filters - including relation to tags
-    const queryBuilder = this.placeRepository.createQueryBuilder('place')
-      .leftJoinAndSelect('place.tags', 'tag');
+    try {
+      // Build query with filters - including relation to tags
+      const queryBuilder = this.placeRepository.createQueryBuilder('place')
+        .leftJoinAndSelect('place.tags', 'tag');
 
-    // Apply name filter
-    if (filterDto.name) {
-      queryBuilder.andWhere('place.name ILIKE :name', { name: `%${filterDto.name}%` });
-    }
+      // Apply name filter
+      if (filterDto.name) {
+        queryBuilder.andWhere('place.name ILIKE :name', { name: `%${filterDto.name}%` });
+      }
 
-    // Apply status filter
-    if (filterDto.status) {
-      queryBuilder.andWhere('place.status = :status', { status: filterDto.status });
-    }
+      // Apply status filter
+      if (filterDto.status) {
+        queryBuilder.andWhere('place.status = :status', { status: filterDto.status });
+      }
 
-    // Apply tag IDs filter
-    if (filterDto.tagIds && filterDto.tagIds.length > 0) {
-      queryBuilder.andWhere('tag.id IN (:...tagIds)', { tagIds: filterDto.tagIds });
-    }
+      // Apply tag IDs filter
+      if (filterDto.tagIds && filterDto.tagIds.length > 0) {
+        queryBuilder.andWhere('tag.id IN (:...tagIds)', { tagIds: filterDto.tagIds });
+      }
 
-    // Apply location-based filter (geospatial)
-    if (filterDto.location) {
-      const { latitude, longitude, radius } = filterDto.location;
+      // Apply location-based filter (geospatial)
+      if (filterDto.location) {
+        const { latitude, longitude, radius } = filterDto.location;
+        this.logger.log(`Applying geospatial filter: lat=${latitude}, lng=${longitude}, radius=${radius}`);
+
+        queryBuilder
+          .andWhere(
+            'ST_DWithin(place.coordinates, ST_Point(:longitude, :latitude)::geography, :radius)',
+            { longitude, latitude, radius }
+          );
+      }
+
+      // Set pagination
+      const page = filterDto.page || 1;
+      const limit = Math.min(filterDto.limit || 10, 100); // Max 100 results per page
+      const offset = (page - 1) * limit;
 
       queryBuilder
-        .andWhere(
-          'ST_DWithin(place.coordinates, ST_Point(:longitude, :latitude)::geography, :radius)',
-          { longitude, latitude, radius }
-        );
+        .orderBy('place.createdAt', 'DESC')
+        .limit(limit)
+        .offset(offset);
+
+      // Execute query
+      const [places, total] = await queryBuilder.getManyAndCount();
+      this.logger.log(`Found ${places.length} places out of total ${total}`);
+
+      // Convert to DTOs
+      const placesDto = places.map(place => this.entityToDto(place));
+
+      const result = {
+        data: placesDto,
+        meta: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit),
+        },
+      };
+
+      // Cache the result for 5 minutes (300 seconds)
+      await this.redisService.setJson(cacheKey, result, 300);
+      this.logger.log(`Results cached for key: ${cacheKey}`);
+
+      return result;
+    } catch (error) {
+      this.logger.error(`Error finding places: ${error.message}`, error.stack);
+      throw error;
     }
-
-    // Set pagination
-    const page = filterDto.page || 1;
-    const limit = Math.min(filterDto.limit || 10, 100); // Max 100 results per page
-    const offset = (page - 1) * limit;
-
-    queryBuilder
-      .orderBy('place.createdAt', 'DESC')
-      .limit(limit)
-      .offset(offset);
-
-    // Execute query
-    const [places, total] = await queryBuilder.getManyAndCount();
-
-    // Convert to DTOs
-    const placesDto = places.map(place => this.entityToDto(place));
-
-    const result = {
-      data: placesDto,
-      meta: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit),
-      },
-    };
-
-    // Cache the result for 5 minutes (300 seconds)
-    await this.redisService.setJson(cacheKey, result, 300);
-    this.logger.log(`Results cached for key: ${cacheKey}`);
-
-    return result;
   }
 
   async getPlaceById(id: string) {
-    const place = await this.placeRepository.findOne({
-      where: { id },
-      relations: ['tags', 'creator', 'moderator', 'moderationLogs']
-    });
+    this.logger.log(`Getting place by ID: ${id}`);
+    try {
+      const place = await this.placeRepository.findOne({
+        where: { id },
+        relations: ['tags', 'creator', 'moderator', 'moderationLogs']
+      });
 
-    if (!place) {
-      throw new NotFoundException(`Place with ID ${id} not found`);
+      if (!place) {
+        this.logger.warn(`Place with ID ${id} not found`);
+        throw new NotFoundException(`Place with ID ${id} not found`);
+      }
+
+      this.logger.log(`Successfully retrieved place: ${id}`);
+      return this.entityToDto(place);
+    } catch (error) {
+      this.logger.error(`Error getting place by ID ${id}: ${error.message}`, error.stack);
+      throw error;
     }
-
-    return this.entityToDto(place);
   }
 
   async updatePlace(id: string, updatePlaceDto: UpdatePlaceDto, updaterId?: string) {
@@ -214,11 +282,6 @@ export class PlacesService {
       place.description = updatePlaceDto.description;
     }
 
-    // Update coordinates if provided
-    if (updatePlaceDto.coordinates) {
-      place.coordinates = `POINT(${updatePlaceDto.coordinates.longitude} ${updatePlaceDto.coordinates.latitude})`;
-    }
-
     // Handle tags relationship if provided
     if (updatePlaceDto.tagIds !== undefined) {
       if (updatePlaceDto.tagIds.length > 0) {
@@ -233,89 +296,222 @@ export class PlacesService {
       }
     }
 
-    const updatedPlace = await this.placeRepository.save(place);
+    // Update the place in database
+    const updateData: any = {
+      name: updatePlaceDto.name || place.name,
+      description: updatePlaceDto.description !== undefined ? updatePlaceDto.description : place.description,
+    };
 
-    // Log the update
-    await this.logModerationAction(
-      updatedPlace.id,
-      null,
-      ModerationAction.UPDATED,
-      'Place updated by user'
-    );
+    // Update coordinates if provided using raw query for proper geometry handling
+    if (updatePlaceDto.coordinates) {
+      const wktString = `POINT(${updatePlaceDto.coordinates.longitude} ${updatePlaceDto.coordinates.latitude})`;
 
-    return this.entityToDto(updatedPlace);
+      const queryRunner = this.placeRepository.manager.connection.createQueryRunner();
+      await queryRunner.connect();
+      await queryRunner.startTransaction();
+
+      try {
+        // Update the place with new coordinates using proper PostGIS functions
+        await queryRunner.query(
+          `UPDATE places SET name = $1, description = $2, coordinates = ST_SetSRID(ST_GeomFromText($3), 4326), updated_at = $4 WHERE id = $5`,
+          [updateData.name, updateData.description, wktString, new Date(), id]
+        );
+
+        // Handle tags separately if they were provided
+        if (updatePlaceDto.tagIds !== undefined) {
+          // First, remove all existing tag associations
+          await queryRunner.query(
+            `DELETE FROM place_tags WHERE place_id = $1`,
+            [id]
+          );
+
+          // Then add new tag associations if any
+          if (updatePlaceDto.tagIds.length > 0) {
+            const tags = await this.tagRepository.findByIds(updatePlaceDto.tagIds);
+            if (tags.length !== updatePlaceDto.tagIds.length) {
+              throw new BadRequestException('One or more tag IDs are invalid');
+            }
+
+            for (const tag of tags) {
+              await queryRunner.query(
+                `INSERT INTO place_tags (place_id, tag_id) VALUES ($1, $2)`,
+                [id, tag.id]
+              );
+            }
+          }
+        }
+
+        await queryRunner.commitTransaction();
+
+        // Return the updated place object
+        const updatedPlace = await this.placeRepository.findOne({
+          where: { id },
+          relations: ['tags']
+        });
+
+        // Log the update
+        await this.logModerationAction(
+          updatedPlace.id,
+          null,
+          ModerationAction.UPDATED,
+          'Place updated by user'
+        );
+
+        this.logger.log(`Successfully updated place with ID: ${updatedPlace.id}`);
+        return this.entityToDto(updatedPlace);
+      } catch (error) {
+        await queryRunner.rollbackTransaction();
+        throw error;
+      } finally {
+        await queryRunner.release();
+      }
+    } else {
+      // If no coordinates to update, just update other fields
+      const queryRunner = this.placeRepository.manager.connection.createQueryRunner();
+      await queryRunner.connect();
+      await queryRunner.startTransaction();
+
+      try {
+        // Update the place without coordinates
+        await queryRunner.query(
+          `UPDATE places SET name = $1, description = $2, updated_at = $3 WHERE id = $4`,
+          [updateData.name, updateData.description, new Date(), id]
+        );
+
+        // Handle tags separately if they were provided
+        if (updatePlaceDto.tagIds !== undefined) {
+          // First, remove all existing tag associations
+          await queryRunner.query(
+            `DELETE FROM place_tags WHERE place_id = $1`,
+            [id]
+          );
+
+          // Then add new tag associations if any
+          if (updatePlaceDto.tagIds.length > 0) {
+            const tags = await this.tagRepository.findByIds(updatePlaceDto.tagIds);
+            if (tags.length !== updatePlaceDto.tagIds.length) {
+              throw new BadRequestException('One or more tag IDs are invalid');
+            }
+
+            for (const tag of tags) {
+              await queryRunner.query(
+                `INSERT INTO place_tags (place_id, tag_id) VALUES ($1, $2)`,
+                [id, tag.id]
+              );
+            }
+          }
+        }
+
+        await queryRunner.commitTransaction();
+
+        // Return the updated place object
+        const updatedPlace = await this.placeRepository.findOne({
+          where: { id },
+          relations: ['tags']
+        });
+
+        // Log the update
+        await this.logModerationAction(
+          updatedPlace.id,
+          null,
+          ModerationAction.UPDATED,
+          'Place updated by user'
+        );
+
+        return this.entityToDto(updatedPlace);
+      } catch (error) {
+        await queryRunner.rollbackTransaction();
+        throw error;
+      } finally {
+        await queryRunner.release();
+      }
+    }
   }
 
   async approvePlace(id: string, moderatorId: string, reason?: string) {
     this.logger.log(`Approving place with ID: ${id}, moderator: ${moderatorId}, reason: ${reason}`);
 
-    const place = await this.placeRepository.findOne({
-      where: { id },
-      relations: ['tags']
-    });
-
-    if (!place) {
-      throw new NotFoundException(`Place with ID ${id} not found`);
-    }
-
-    place.status = PlaceStatus.APPROVED;
-    place.moderatorId = moderatorId; // Track who approved it
-    const updatedPlace = await this.placeRepository.save(place);
-
-    // Log the approval
-    await this.logModerationAction(
-      place.id,
-      moderatorId,
-      ModerationAction.APPROVED,
-      reason || 'Place approved'
-    );
-
-    // Generate embedding for the place after approval
     try {
-      // Extract tag names for embedding generation
-      const tagNames = place.tags ? place.tags.map(tag => tag.name) : [];
-      const generateEmbeddingDto: GenerateEmbeddingDto = {
-        placeId: place.id,
-        name: place.name,
-        description: place.description || '',
-        tags: tagNames,
-      };
+      const place = await this.placeRepository.findOne({
+        where: { id },
+        relations: ['tags']
+      });
 
-      await this.recommendationsService.generateEmbedding(generateEmbeddingDto);
-      this.logger.log(`Generated embedding for approved place: ${place.id}`);
+      if (!place) {
+        this.logger.warn(`Place with ID ${id} not found for approval`);
+        throw new NotFoundException(`Place with ID ${id} not found`);
+      }
+
+      place.status = PlaceStatus.APPROVED;
+      place.moderatorId = moderatorId; // Track who approved it
+      const updatedPlace = await this.placeRepository.save(place);
+
+      // Log the approval
+      await this.logModerationAction(
+        place.id,
+        moderatorId,
+        ModerationAction.APPROVED,
+        reason || 'Place approved'
+      );
+
+      // Generate embedding for the place after approval
+      try {
+        // Extract tag names for embedding generation
+        const tagNames = place.tags ? place.tags.map(tag => tag.name) : [];
+        const generateEmbeddingDto: GenerateEmbeddingDto = {
+          placeId: place.id,
+          name: place.name,
+          description: place.description || '',
+          tags: tagNames,
+        };
+
+        await this.recommendationsService.generateEmbedding(generateEmbeddingDto);
+        this.logger.log(`Generated embedding for approved place: ${place.id}`);
+      } catch (error) {
+        // If embedding generation fails, don't fail the approval process
+        this.logger.error(`Failed to generate embedding for place ${place.id}: ${error.message}`);
+      }
+
+      this.logger.log(`Successfully approved place: ${place.id}`);
+      return this.entityToDto(updatedPlace);
     } catch (error) {
-      // If embedding generation fails, don't fail the approval process
-      this.logger.error(`Failed to generate embedding for place ${place.id}: ${error.message}`);
+      this.logger.error(`Error approving place ${id}: ${error.message}`, error.stack);
+      throw error;
     }
-
-    return this.entityToDto(updatedPlace);
   }
 
   async rejectPlace(id: string, moderatorId: string, reason?: string) {
     this.logger.log(`Rejecting place with ID: ${id}, moderator: ${moderatorId}, reason: ${reason}`);
 
-    const place = await this.placeRepository.findOne({
-      where: { id },
-      relations: ['tags']
-    });
+    try {
+      const place = await this.placeRepository.findOne({
+        where: { id },
+        relations: ['tags']
+      });
 
-    if (!place) {
-      throw new NotFoundException(`Place with ID ${id} not found`);
+      if (!place) {
+        this.logger.warn(`Place with ID ${id} not found for rejection`);
+        throw new NotFoundException(`Place with ID ${id} not found`);
+      }
+
+      place.status = PlaceStatus.REJECTED;
+      place.moderatorId = moderatorId; // Track who rejected it
+      const updatedPlace = await this.placeRepository.save(place);
+
+      // Log the rejection
+      await this.logModerationAction(
+        place.id,
+        moderatorId,
+        ModerationAction.REJECTED,
+        reason || 'Place rejected'
+      );
+
+      this.logger.log(`Successfully rejected place: ${place.id}`);
+      return this.entityToDto(updatedPlace);
+    } catch (error) {
+      this.logger.error(`Error rejecting place ${id}: ${error.message}`, error.stack);
+      throw error;
     }
-
-    place.status = PlaceStatus.REJECTED;
-    place.moderatorId = moderatorId; // Track who rejected it
-    const updatedPlace = await this.placeRepository.save(place);
-
-    // Log the rejection
-    await this.logModerationAction(
-      place.id,
-      moderatorId,
-      ModerationAction.REJECTED,
-      reason || 'Place rejected'
-    );
-
-    return this.entityToDto(updatedPlace);
   }
 
   private async logModerationAction(
