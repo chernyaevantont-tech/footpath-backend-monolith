@@ -47,6 +47,7 @@ export class PlacesService {
     dto.moderatorId = place.moderatorId || null;
     dto.createdAt = place.createdAt;
     dto.updatedAt = place.updatedAt;
+    dto.contentHash = place.contentHash || null;
     
     // Convert tags to DTOs
     dto.tags = place.tags?.map(tag => {
@@ -82,6 +83,7 @@ export class PlacesService {
       place.creatorId = creatorId;
       place.createdAt = new Date();
       place.updatedAt = new Date();
+      place.coordinates = wktString;
 
       // Handle tags relationship
       let tagsToAssign = [];
@@ -93,6 +95,12 @@ export class PlacesService {
         tagsToAssign = tags;
       }
 
+      // Assign tags to place for hash calculation
+      place.tags = tagsToAssign;
+
+      // Generate content hash before inserting
+      place.generateHashOnInsert();
+
       // Use raw query with proper PostGIS functions for geometry
       const queryRunner = this.placeRepository.manager.connection.createQueryRunner();
       await queryRunner.connect();
@@ -101,8 +109,8 @@ export class PlacesService {
       try {
         // Insert the place using raw SQL with proper ST_GeomFromText function
         const result = await queryRunner.query(
-          `INSERT INTO places (id, name, description, coordinates, status, creator_id, created_at, updated_at)
-           VALUES (DEFAULT, $1, $2, ST_SetSRID(ST_GeomFromText($3), 4326), $4, $5, $6, $7)
+          `INSERT INTO places (id, name, description, coordinates, status, creator_id, created_at, updated_at, content_hash)
+           VALUES (DEFAULT, $1, $2, ST_SetSRID(ST_GeomFromText($3), 4326), $4, $5, $6, $7, $8)
            RETURNING id`,
           [
             place.name,
@@ -111,7 +119,8 @@ export class PlacesService {
             place.status,
             place.creatorId,
             place.createdAt,
-            place.updatedAt
+            place.updatedAt,
+            place.contentHash
           ]
         );
 
@@ -364,16 +373,20 @@ export class PlacesService {
     // Update coordinates if provided using raw query for proper geometry handling
     if (updatePlaceDto.coordinates) {
       const wktString = `POINT(${updatePlaceDto.coordinates.longitude} ${updatePlaceDto.coordinates.latitude})`;
+      place.coordinates = wktString;
 
       const queryRunner = this.placeRepository.manager.connection.createQueryRunner();
       await queryRunner.connect();
       await queryRunner.startTransaction();
 
       try {
+        // Generate content hash before updating
+        place.generateHashOnUpdate();
+
         // Update the place with new coordinates using proper PostGIS functions
         await queryRunner.query(
-          `UPDATE places SET name = $1, description = $2, coordinates = ST_SetSRID(ST_GeomFromText($3), 4326), updated_at = $4 WHERE id = $5`,
-          [updateData.name, updateData.description, wktString, new Date(), id]
+          `UPDATE places SET name = $1, description = $2, coordinates = ST_SetSRID(ST_GeomFromText($3), 4326), updated_at = $4, content_hash = $5 WHERE id = $6`,
+          [updateData.name, updateData.description, wktString, new Date(), place.contentHash, id]
         );
 
         // Handle tags separately if they were provided
@@ -431,10 +444,13 @@ export class PlacesService {
       await queryRunner.startTransaction();
 
       try {
+        // Generate content hash before updating
+        place.generateHashOnUpdate();
+
         // Update the place without coordinates
         await queryRunner.query(
-          `UPDATE places SET name = $1, description = $2, updated_at = $3 WHERE id = $4`,
-          [updateData.name, updateData.description, new Date(), id]
+          `UPDATE places SET name = $1, description = $2, updated_at = $3, content_hash = $4 WHERE id = $5`,
+          [updateData.name, updateData.description, new Date(), place.contentHash, id]
         );
 
         // Handle tags separately if they were provided

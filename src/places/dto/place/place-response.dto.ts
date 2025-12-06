@@ -62,6 +62,13 @@ export class PlaceResponseDto {
   updatedAt: Date;
 
   @ApiProperty({
+    example: '5d41402abc4b2a76b9719d911017c592',
+    description: 'MD5 hash of place content for efficient sync',
+    nullable: true,
+  })
+  contentHash: string | null;
+
+  @ApiProperty({
     type: [TagResponseDto],
     description: 'List of tags associated with the place',
   })

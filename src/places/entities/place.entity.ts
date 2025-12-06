@@ -1,7 +1,8 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany, ManyToOne, JoinColumn, ManyToMany, JoinTable } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany, ManyToOne, JoinColumn, ManyToMany, JoinTable, BeforeInsert, BeforeUpdate } from 'typeorm';
 import { PlaceModerationLog } from './place-moderation-log.entity';
 import { User } from '../../auth/entities/user.entity';
 import { Tag } from './tag.entity';
+import { generatePlaceContentHash } from '../utils/hash.util';
 
 export enum PlaceStatus {
   PENDING = 'pending',
@@ -53,6 +54,9 @@ export class Place {
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 
+  @Column({ name: 'content_hash', nullable: true, length: 32 })
+  contentHash: string;
+
   @OneToMany(() => PlaceModerationLog, moderationLog => moderationLog.place)
   moderationLogs: PlaceModerationLog[];
 
@@ -69,4 +73,22 @@ export class Place {
     }
   })
   tags: Tag[];
+
+  /**
+   * Generate content hash before inserting a new place.
+   * This allows mobile clients to detect changes efficiently.
+   */
+  @BeforeInsert()
+  generateHashOnInsert() {
+    this.contentHash = generatePlaceContentHash(this);
+  }
+
+  /**
+   * Regenerate content hash before updating a place.
+   * This ensures the hash is always up-to-date with the content.
+   */
+  @BeforeUpdate()
+  generateHashOnUpdate() {
+    this.contentHash = generatePlaceContentHash(this);
+  }
 }
