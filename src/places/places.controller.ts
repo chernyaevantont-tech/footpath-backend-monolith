@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Put,
+  Delete,
   Param,
   Query,
   Body,
@@ -46,13 +47,14 @@ export class PlacesController {
   async createPlace(@Body() createPlaceDto: CreatePlaceDto, @Request() req) {
     this.logger.log('Creating new place', {
       userId: req.user.id,
+      userRole: req.user.role,
       coordinates: createPlaceDto.coordinates,
       name: createPlaceDto.name,
       description: createPlaceDto.description,
       tagIds: createPlaceDto.tagIds
     });
     try {
-      const result = await this.placesService.createPlace(createPlaceDto, req.user.id);
+      const result = await this.placesService.createPlace(createPlaceDto, req.user.id, req.user.role);
       this.logger.log('Successfully created place', { placeId: result.id });
       return result;
     } catch (error) {
@@ -60,6 +62,7 @@ export class PlacesController {
         error: error.message,
         stack: error.stack,
         userId: req.user.id,
+        userRole: req.user.role,
         coordinates: createPlaceDto.coordinates
       });
       throw error;
@@ -78,9 +81,9 @@ export class PlacesController {
     type: PlaceFilterResponseDto
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async findPlaces(@Query() filterDto: PlaceFilterDto) {
+  async findPlaces(@Query() filterDto: PlaceFilterDto, @Request() req) {
     this.logger.log('Searching for places');
-    return await this.placesService.findPlaces(filterDto);
+    return await this.placesService.findPlaces(filterDto, { id: req.user.id, role: req.user.role });
   }
 
   @UseGuards(JwtAuthGuard)
@@ -102,6 +105,30 @@ export class PlacesController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Delete(':id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete a place by ID' })
+  @ApiBearerAuth()
+  @ApiParam({ name: 'id', description: 'Place ID', type: String })
+  @ApiResponse({
+    status: 200,
+    description: 'Place deleted successfully',
+    schema: {
+      example: {
+        message: 'Place deleted successfully',
+        id: 'place-uuid'
+      }
+    }
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden - insufficient permissions' })
+  @ApiResponse({ status: 404, description: 'Place not found' })
+  async deletePlace(@Param('id') id: string, @Request() req) {
+    this.logger.log(`Deleting place with ID: ${id}, by user: ${req.user.id}, role: ${req.user.role}`);
+    return await this.placesService.deletePlace(id, req.user.id, req.user.role);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Put(':id')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Update a place by ID' })
@@ -116,8 +143,8 @@ export class PlacesController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Place not found' })
   async updatePlace(@Param('id') id: string, @Body() updatePlaceDto: UpdatePlaceDto, @Request() req) {
-    this.logger.log(`Updating place with ID: ${id}`);
-    return await this.placesService.updatePlace(id, updatePlaceDto, req.user.id);
+    this.logger.log(`Updating place with ID: ${id}, by user: ${req.user.id}, role: ${req.user.role}`);
+    return await this.placesService.updatePlace(id, updatePlaceDto, req.user.id, req.user.role);
   }
 
   @UseGuards(JwtAuthGuard)

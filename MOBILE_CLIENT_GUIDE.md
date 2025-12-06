@@ -88,28 +88,37 @@ The backend uses Redis for caching to improve performance:
   - Error Codes: 401 (Unauthorized), 403 (Forbidden - only admins can register moderators), 400 (Bad Request - invalid role, email already exists, weak password, etc.)
 
 #### Places APIs
-- `POST /places` - Create a new place (pending moderation)
+- `POST /places` - Create a new place (pending moderation for regular users, approved for moderators/admins)
   - Headers: `Authorization: Bearer <token>`
   - Request Body: `{"name": "string", "description": "string", "coordinates": {"latitude": "number", "longitude": "number"}, "tagIds": ["string"]}`
   - Response: `{"id": "string", "name": "string", "description": "string", "coordinates": {"type": "string", "coordinates": ["number"]}, "tagIds": ["string"], "status": "string", "creatorId": "string", "moderatorId": "string", "createdAt": "datetime", "updatedAt": "datetime"}`
   - Error Codes: 401 (Unauthorized)
+  - Notes: Places created by regular users start with "pending" status, while places created by moderators/admins start with "approved" status
 
-- `GET /places` - Search for places with filters (radius, tags, status)
+- `GET /places` - Search for places with filters (radius, tags, status, creatorId)
   - Headers: `Authorization: Bearer <token>`
-  - Query Params: `?name=string&status=string&tagIds[]=string&location={"latitude": "number", "longitude": "number", "radius": "number"}&page=number&limit=number`
+  - Query Params: `?name=string&status=string&tagIds[]=string&creatorId=string&location={"latitude": "number", "longitude": "number", "radius": "number"}&page=number&limit=number`
   - Response: `{"data": [...], "meta": {"page": "number", "limit": "number", "total": "number", "pages": "number"}}`
   - Error Codes: 401 (Unauthorized)
+  - Notes: Regular users can see all approved places but only their own pending/rejected places; moderators/admins can see all places regardless of status
 
 - `GET /places/{id}` - Get a specific place by ID
   - Headers: `Authorization: Bearer <token>`
   - Response: `{"id": "string", "name": "string", "description": "string", "coordinates": {"type": "string", "coordinates": ["number"]}, "tagIds": ["string"], "status": "string", "creatorId": "string", "moderatorId": "string", "createdAt": "datetime", "updatedAt": "datetime"}`
   - Error Codes: 401 (Unauthorized), 404 (Place not found)
 
-- `PUT /places/{id}` - Update a place (user's own places only)
+- `PUT /places/{id}` - Update a place (moderators/admins can update approved places only)
   - Headers: `Authorization: Bearer <token>`
   - Request Body: `{"name": "string", "description": "string", "coordinates": {"latitude": "number", "longitude": "number"}}`
   - Response: `{"id": "string", "name": "string", "description": "string", "coordinates": {"type": "string", "coordinates": ["number"]}, "tagIds": ["string"], "status": "string", "creatorId": "string", "moderatorId": "string", "createdAt": "datetime", "updatedAt": "datetime"}`
-  - Error Codes: 401 (Unauthorized), 404 (Place not found)
+  - Error Codes: 401 (Unauthorized), 403 (Forbidden - insufficient permissions), 404 (Place not found)
+  - Notes: Regular users cannot update places; only moderators/admins can update approved places
+
+- `DELETE /places/{id}` - Delete a place
+  - Headers: `Authorization: Bearer <token>`
+  - Response: `{"message": "Place deleted successfully", "id": "string"}`
+  - Error Codes: 401 (Unauthorized), 403 (Forbidden - insufficient permissions), 404 (Place not found)
+  - Notes: Regular users can only delete their own pending or rejected places; moderators/admins can delete approved places of any user
 
 - `PUT /places/{id}/approve` - Approve a place (moderator/admin only)
   - Headers: `Authorization: Bearer <token>`

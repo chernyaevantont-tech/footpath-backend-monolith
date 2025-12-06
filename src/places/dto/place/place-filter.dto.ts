@@ -97,4 +97,12 @@ export class PlaceFilterDto {
   @Max(100)
   @IsOptional()
   limit?: number = 10;
+
+  @ApiPropertyOptional({
+    example: 'a1b2c3d4-e5f6-7890-1234-567890abcdef',
+    description: 'Filter places by creator ID',
+  })
+  @IsString()
+  @IsOptional()
+  creatorId?: string;
 }

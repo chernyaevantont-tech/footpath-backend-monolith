@@ -61,8 +61,8 @@ export class PlacesService {
     return dto;
   }
 
-  async createPlace(createPlaceDto: CreatePlaceDto, creatorId: string) {
-    this.logger.log('Creating new place');
+  async createPlace(createPlaceDto: CreatePlaceDto, creatorId: string, userRole: string) {
+    this.logger.log('Creating new place', { creatorId, userRole });
 
     try {
       // Create the place entity with WKT format
@@ -71,7 +71,14 @@ export class PlacesService {
       place.description = createPlaceDto.description || null;
       // Create WKT string format: 'POINT(longitude latitude)'
       const wktString = `POINT(${createPlaceDto.coordinates.longitude} ${createPlaceDto.coordinates.latitude})`;
-      place.status = PlaceStatus.PENDING;
+
+      // Set status based on user role
+      if (userRole === 'moderator' || userRole === 'admin') {
+        place.status = PlaceStatus.APPROVED;
+      } else {
+        place.status = PlaceStatus.PENDING;
+      }
+
       place.creatorId = creatorId;
       place.createdAt = new Date();
       place.updatedAt = new Date();
@@ -150,11 +157,11 @@ export class PlacesService {
     }
   }
 
-  async findPlaces(filterDto: PlaceFilterDto) {
-    this.logger.log('Finding places with filters', { filterDto });
+  async findPlaces(filterDto: PlaceFilterDto, user?: { id: string; role: string }) {
+    this.logger.log('Finding places with filters', { filterDto, userId: user?.id, userRole: user?.role });
 
     // Generate cache key from filter parameters
-    const filterKey = JSON.stringify(filterDto);
+    const filterKey = JSON.stringify({ ...filterDto, userId: user?.id, userRole: user?.role });
     const cacheKey = `places:search:${filterKey}`;
 
     // Try to get from cache first
@@ -177,6 +184,23 @@ export class PlacesService {
       // Apply status filter
       if (filterDto.status) {
         queryBuilder.andWhere('place.status = :status', { status: filterDto.status });
+      }
+
+      // Apply creator ID filter
+      if (filterDto.creatorId) {
+        queryBuilder.andWhere('place.creator_id = :creatorId', { creatorId: filterDto.creatorId });
+      }
+
+      // Role-based access control for statuses
+      if (user && user.role !== 'moderator' && user.role !== 'admin') {
+        // Regular users can only see their own pending/rejected places, but can see all approved places
+        queryBuilder.andWhere(
+          '(place.status = :approvedStatus OR place.creator_id = :userId)',
+          {
+            approvedStatus: PlaceStatus.APPROVED,
+            userId: user.id
+          }
+        );
       }
 
       // Apply tag IDs filter
@@ -255,8 +279,8 @@ export class PlacesService {
     }
   }
 
-  async updatePlace(id: string, updatePlaceDto: UpdatePlaceDto, updaterId?: string) {
-    this.logger.log(`Updating place with ID: ${id}`);
+  async updatePlace(id: string, updatePlaceDto: UpdatePlaceDto, updaterId: string, userRole: string) {
+    this.logger.log(`Updating place with ID: ${id}, by user: ${updaterId}, role: ${userRole}`);
 
     const place = await this.placeRepository.findOne({
       where: { id },
@@ -267,11 +291,10 @@ export class PlacesService {
       throw new NotFoundException(`Place with ID ${id} not found`);
     }
 
-    // Check if place is already approved - updating approved places requires special handling
-    if (place.status === PlaceStatus.APPROVED) {
-      // For approved places, we might want to set status back to pending for re-moderation
-      // For simplicity, we'll allow updates but not change the status
-      this.logger.log(`Place ${id} was approved; updating content but keeping status`);
+    // Check permissions for updating place
+    const hasPermission = await this.validateUpdateAccess(id, updaterId, userRole);
+    if (!hasPermission) {
+      throw new UnauthorizedException('You do not have permission to update this place');
     }
 
     // Update fields if they're provided
@@ -537,6 +560,66 @@ export class PlacesService {
       return false;
     }
     return user.role === UserRole.MODERATOR || user.role === UserRole.ADMIN;
+  }
+
+  // Method to validate user access for updating places
+  async validateUpdateAccess(placeId: string, userId: string, userRole: string): Promise<boolean> {
+    const place = await this.placeRepository.findOne({ where: { id: placeId } });
+    if (!place) {
+      return false;
+    }
+
+    // Moderators and admins can update approved places
+    if ((userRole === 'moderator' || userRole === 'admin') && place.status === PlaceStatus.APPROVED) {
+      return true;
+    }
+
+    // Regular users cannot update places
+    return false;
+  }
+
+  // Method to validate user access for deleting places
+  async validateDeleteAccess(placeId: string, userId: string, userRole: string): Promise<boolean> {
+    const place = await this.placeRepository.findOne({ where: { id: placeId } });
+    if (!place) {
+      return false;
+    }
+
+    if (userRole === 'moderator' || userRole === 'admin') {
+      // Moderators and admins can delete approved places of any user
+      return place.status === PlaceStatus.APPROVED;
+    } else {
+      // Regular users can delete only their own pending or rejected places
+      return place.creatorId === userId &&
+             (place.status === PlaceStatus.PENDING || place.status === PlaceStatus.REJECTED);
+    }
+  }
+
+  // Method to delete a place
+  async deletePlace(id: string, userId: string, userRole: string) {
+    this.logger.log(`Deleting place with ID: ${id}, by user: ${userId}, role: ${userRole}`);
+
+    const place = await this.placeRepository.findOne({ where: { id } });
+
+    if (!place) {
+      throw new NotFoundException(`Place with ID ${id} not found`);
+    }
+
+    // Validate access based on role and place status
+    const hasAccess = await this.validateDeleteAccess(id, userId, userRole);
+    if (!hasAccess) {
+      throw new UnauthorizedException('You do not have permission to delete this place');
+    }
+
+    // Perform the deletion
+    await this.placeRepository.delete(id);
+
+    this.logger.log(`Successfully deleted place with ID: ${id}`);
+
+    return {
+      message: 'Place deleted successfully',
+      id: id
+    };
   }
   
   // Methods for tag management

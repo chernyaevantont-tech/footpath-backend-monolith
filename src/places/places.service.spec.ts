@@ -152,7 +152,7 @@ describe('PlacesService', () => {
       (mockPlaceRepository.save as jest.Mock).mockResolvedValue(mockPlace);
       (mockModerationLogRepository.save as jest.Mock).mockResolvedValue(mockModerationLog);
 
-      const result = await service.createPlace(createPlaceDto, 'creatorId');
+      const result = await service.createPlace(createPlaceDto, 'creatorId', 'user');
 
       expect(result.id).toBe(mockPlace.id);
       expect(result.name).toBe(mockPlace.name);
@@ -170,7 +170,7 @@ describe('PlacesService', () => {
 
       (mockTagRepository.findByIds as jest.Mock).mockResolvedValue([]); // No tags found
 
-      await expect(service.createPlace(createPlaceDto, 'creatorId')).rejects.toThrow(BadRequestException);
+      await expect(service.createPlace(createPlaceDto, 'creatorId', 'user')).rejects.toThrow(BadRequestException);
     });
   });
 
@@ -232,7 +232,7 @@ describe('PlacesService', () => {
       (mockPlaceRepository.findOne as jest.Mock).mockResolvedValue(mockPlace);
       (mockPlaceRepository.save as jest.Mock).mockResolvedValue(updatedPlace);
 
-      const result = await service.updatePlace('1', updatePlaceDto);
+      const result = await service.updatePlace('1', updatePlaceDto, 'userId', 'user');
 
       expect(result.name).toBe('Updated Name');
       expect(mockPlaceRepository.save).toHaveBeenCalledWith(updatedPlace);
@@ -241,7 +241,7 @@ describe('PlacesService', () => {
     it('should throw NotFoundException if place does not exist', async () => {
       (mockPlaceRepository.findOne as jest.Mock).mockResolvedValue(null);
 
-      await expect(service.updatePlace('1', { name: 'Updated Name' })).rejects.toThrow(NotFoundException);
+      await expect(service.updatePlace('1', { name: 'Updated Name' }, 'userId', 'user')).rejects.toThrow(NotFoundException);
     });
   });
 
