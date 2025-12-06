@@ -183,8 +183,8 @@ export class PathsService {
     return this.entityToDto(fullPath);
   }
 
-  async findPaths(filterDto: PathFilterDto) {
-    this.logger.log('Finding paths with filters');
+  async findPaths(filterDto: PathFilterDto, userId?: string) {
+    this.logger.log('Finding paths with filters', { filterDto, userId });
 
     const queryBuilder = this.pathRepository.createQueryBuilder('path')
       .leftJoinAndSelect('path.pathPlaces', 'pathPlace')
@@ -202,6 +202,10 @@ export class PathsService {
 
     if (filterDto.creatorId) {
       queryBuilder.andWhere('path.creatorId = :creatorId', { creatorId: filterDto.creatorId });
+    } else if (userId) {
+      // If no specific creatorId is provided but we have a user, only show paths they created
+      // This is for access control - users can only see their own paths
+      queryBuilder.andWhere('path.creatorId = :userId', { userId });
     }
 
     if (filterDto.status) {
@@ -236,7 +240,7 @@ export class PathsService {
     };
   }
 
-  async getPathById(id: string) {
+  async getPathById(id: string, userId?: string) {
     const path = await this.pathRepository.findOne({
       where: { id },
       relations: ['pathPlaces', 'pathPlaces.place', 'creator']
@@ -246,10 +250,15 @@ export class PathsService {
       throw new NotFoundException(`Path with ID ${id} not found`);
     }
 
+    // Check if user is the creator of the path
+    if (userId && path.creatorId !== userId) {
+      throw new NotFoundException('Path not found or you do not have access to this path');
+    }
+
     return this.entityToDto(path);
   }
 
-  async updatePath(id: string, updatePathDto: UpdatePathDto) {
+  async updatePath(id: string, updatePathDto: UpdatePathDto, userId: string) {
     const path = await this.pathRepository.findOne({
       where: { id },
       relations: ['pathPlaces']
@@ -257,6 +266,11 @@ export class PathsService {
 
     if (!path) {
       throw new NotFoundException(`Path with ID ${id} not found`);
+    }
+
+    // Check if user is the creator of the path
+    if (path.creatorId !== userId) {
+      throw new NotFoundException('Path not found or you do not have permission to update this path');
     }
 
     // Update basic fields if provided
@@ -332,7 +346,7 @@ export class PathsService {
     }
 
     const updatedPath = await this.pathRepository.save(path);
-    
+
     // Reload the updated path to ensure all relations are loaded
     const fullPath = await this.pathRepository.findOne({
       where: { id: updatedPath.id },
@@ -342,11 +356,16 @@ export class PathsService {
     return this.entityToDto(fullPath);
   }
 
-  async deletePath(id: string) {
+  async deletePath(id: string, userId: string) {
     const path = await this.pathRepository.findOne({ where: { id } });
 
     if (!path) {
       throw new NotFoundException(`Path with ID ${id} not found`);
+    }
+
+    // Check if user is the creator of the path
+    if (path.creatorId !== userId) {
+      throw new NotFoundException('Path not found or you do not have permission to delete this path');
     }
 
     await this.pathRepository.delete(id);

@@ -10,7 +10,8 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
-  Logger
+  Logger,
+  Request
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiQuery, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -75,9 +76,9 @@ export class PathsController {
     type: PathsListResponseDto
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async findPaths(@Query() pathFilterDto: PathFilterDto) {
+  async findPaths(@Query() pathFilterDto: PathFilterDto, @Request() req) {
     this.logger.log('Searching for paths');
-    return await this.pathsService.findPaths(pathFilterDto);
+    return await this.pathsService.findPaths(pathFilterDto, req.user.id);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -93,9 +94,9 @@ export class PathsController {
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Path not found' })
-  async getPath(@Param('id') id: string) {
+  async getPath(@Param('id') id: string, @Request() req) {
     this.logger.log(`Getting path with ID: ${id}`);
-    return await this.pathsService.getPathById(id);
+    return await this.pathsService.getPathById(id, req.user.id);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -112,9 +113,9 @@ export class PathsController {
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Path not found' })
-  async updatePath(@Param('id') id: string, @Body() updatePathDto: UpdatePathDto) {
+  async updatePath(@Param('id') id: string, @Body() updatePathDto: UpdatePathDto, @Request() req) {
     this.logger.log(`Updating path with ID: ${id}`);
-    return await this.pathsService.updatePath(id, updatePathDto);
+    return await this.pathsService.updatePath(id, updatePathDto, req.user.id);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -134,8 +135,8 @@ export class PathsController {
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Path not found' })
-  async deletePath(@Param('id') id: string) {
+  async deletePath(@Param('id') id: string, @Request() req) {
     this.logger.log(`Deleting path with ID: ${id}`);
-    return await this.pathsService.deletePath(id);
+    return await this.pathsService.deletePath(id, req.user.id);
   }
 }

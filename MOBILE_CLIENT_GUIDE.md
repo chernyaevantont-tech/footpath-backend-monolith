@@ -178,21 +178,26 @@ The Place object returned by these APIs now includes:
   - Query Params: `?page=number&limit=number&status=string&startDate=string&endDate=string`
   - Response: `{"data": [...], "meta": {"page": "number", "limit": "number", "total": "number", "pages": "number"}}`
   - Error Codes: 401 (Unauthorized)
+  - Notes: Users can only retrieve paths they created; access to paths created by other users is denied
 
 - `GET /paths/{id}` - Get a specific path
   - Headers: `Authorization: Bearer <token>`
   - Response: `{"id": "string", "name": "string", "description": "string", "distance": "number", "totalTime": "number", "places": [...]}`
+  - Error Codes: 401 (Unauthorized), 404 (Path not found or user does not have access)
+  - Notes: Users can only access paths they created; access to paths created by other users is denied
 
 - `PUT /paths/{id}` - Update a path
   - Headers: `Authorization: Bearer <token>`
   - Request Body: `{"name": "string", "description": "string"}`
   - Response: `{"id": "string", "name": "string", "description": "string", ...}`
-  - Error Codes: 401 (Unauthorized)
+  - Error Codes: 401 (Unauthorized), 404 (Path not found or user does not have permission to update)
+  - Notes: Only path creator can update the path
 
 - `DELETE /paths/{id}` - Delete a path
   - Headers: `Authorization: Bearer <token>`
   - Response: `{"message": "Path deleted successfully"}`
-  - Error Codes: 401 (Unauthorized), 404 (Path not found)
+  - Error Codes: 401 (Unauthorized), 404 (Path not found or user does not have permission to delete)
+  - Notes: Only path creator can delete the path
 
 #### Walks APIs
 - `POST /walks` - Create a new walk
@@ -206,11 +211,13 @@ The Place object returned by these APIs now includes:
   - Query Params: `?page=number&limit=number&status=string&startDate=string&endDate=string`
   - Response: `{"data": [...], "meta": {"page": "number", "limit": "number", "total": "number", "pages": "number"}}`
   - Error Codes: 401 (Unauthorized)
+  - Notes: Users can only retrieve walks they created or in which they are participants (invited or confirmed)
 
 - `GET /walks/{id}` - Get a specific walk
   - Headers: `Authorization: Bearer <token>`
   - Response: `{"id": "string", "title": "string", "path": {...}, "status": "string", "participants": [...], "startTime": "datetime", "endTime": "datetime"}`
-  - Error Codes: 401 (Unauthorized), 404 (Walk not found)
+  - Error Codes: 401 (Unauthorized), 404 (Walk not found or user does not have access)
+  - Notes: Users can only access walks they created or in which they are participants (invited or confirmed)
 
 - `POST /walks/{id}/invite` - Invite friends to a walk
   - Headers: `Authorization: Bearer <token>`
