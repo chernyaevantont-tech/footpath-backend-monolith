@@ -1,15 +1,16 @@
-import { IsString, IsOptional, IsArray, IsEnum, ValidateNested, IsNumber, Min, Max } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsString, IsOptional, IsArray, IsEnum, ValidateNested, IsNumber, Min, Max, Validate, IsObject } from 'class-validator';
+import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PlaceStatus } from '../../entities/place.entity';
 
-class LocationFilterDto {
+export class LocationFilterDto {
   @ApiProperty({
     example: 55.7558,
     description: 'Latitude coordinate for location-based search',
     minimum: -90,
     maximum: 90,
   })
+  @Type(() => Number)
   @IsNumber()
   @Min(-90)
   @Max(90)
@@ -21,6 +22,7 @@ class LocationFilterDto {
     minimum: -180,
     maximum: 180,
   })
+  @Type(() => Number)
   @IsNumber()
   @Min(-180)
   @Max(180)
@@ -31,9 +33,100 @@ class LocationFilterDto {
     description: 'Radius in meters for location-based search',
     minimum: 0,
   })
+  @Type(() => Number)
   @IsNumber()
   @Min(0)
   radius: number; // radius in meters
+}
+
+// Alternative location DTO to handle lat/lng format
+class AltLocationFilterDto {
+  @ApiProperty({
+    example: 55.7558,
+    description: 'Latitude coordinate for location-based search',
+    minimum: -90,
+    maximum: 90,
+  })
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  lat: number;
+
+  @ApiProperty({
+    example: 37.6173,
+    description: 'Longitude coordinate for location-based search',
+    minimum: -180,
+    maximum: 180,
+  })
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  lng: number;
+
+  @ApiProperty({
+    example: 1000,
+    description: 'Radius in meters for location-based search',
+    minimum: 0,
+  })
+  @IsNumber()
+  @Min(0)
+  radius: number; // radius in meters
+}
+
+export function parseLocation(value: any): LocationFilterDto | undefined {
+  if (!value) return undefined;
+
+  let parsedValue;
+
+  if (typeof value === 'string') {
+    try {
+      parsedValue = JSON.parse(value);
+    } catch (e) {
+      return undefined;
+    }
+  } else if (typeof value === 'object') {
+    parsedValue = value;
+  } else {
+    return undefined;
+  }
+
+  // Convert lat/lng to latitude/longitude if needed
+  if (parsedValue && typeof parsedValue === 'object') {
+    const result: any = { ...parsedValue };
+
+    // Map lat to latitude if present
+    if ('lat' in result) {
+      result.latitude = result.lat;
+      delete result.lat;
+    }
+
+    // Map lng to longitude if present
+    if ('lng' in result) {
+      result.longitude = result.lng;
+      delete result.lng;
+    }
+
+    return result as LocationFilterDto;
+  }
+
+  return undefined;
+}
+
+// Custom validator that handles both validation and transformation
+export class LocationFilterValidator {
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  latitude: number;
+
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  longitude: number;
+
+  @IsNumber()
+  @Min(0)
+  radius: number;
 }
 
 export class PlaceFilterDto {
@@ -69,7 +162,7 @@ export class PlaceFilterDto {
       longitude: 37.6173,
       radius: 1000
     },
-    description: 'Location-based filter parameters',
+    description: 'Location-based filter parameters (accepts lat/lng or latitude/longitude)',
   })
   @ValidateNested()
   @Type(() => LocationFilterDto)
@@ -81,6 +174,7 @@ export class PlaceFilterDto {
     description: 'Page number for pagination',
     minimum: 0,
   })
+  @Type(() => Number)
   @IsNumber()
   @Min(0)
   @IsOptional()
@@ -88,12 +182,13 @@ export class PlaceFilterDto {
 
   @ApiPropertyOptional({
     example: 10,
-    description: 'Number of items per page',
-    minimum: 1,
+    description: 'Number of items per page (use 0 for no limit)',
+    minimum: 0,
     maximum: 100,
   })
+  @Type(() => Number)
   @IsNumber()
-  @Min(1)
+  @Min(0)
   @Max(100)
   @IsOptional()
   limit?: number = 10;

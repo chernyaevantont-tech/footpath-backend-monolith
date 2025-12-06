@@ -98,9 +98,9 @@ The backend uses Redis for caching to improve performance:
 - `GET /places` - Search for places with filters (radius, tags, status, creatorId)
   - Headers: `Authorization: Bearer <token>`
   - Query Params: `?name=string&status=string&tagIds[]=string&creatorId=string&location={"latitude": "number", "longitude": "number", "radius": "number"}&page=number&limit=number`
-  - Response: `{"data": [...], "meta": {"page": "number", "limit": "number", "total": "number", "pages": "number"}}`
+  - Response: `{"data": [...], "meta": {"page": "number", "limit": "number", "total": "number", "pages": "number"}}` (when pagination params are provided) or `{"data": [...], "meta": null}` (when no pagination)
   - Error Codes: 401 (Unauthorized)
-  - Notes: Regular users can see all approved places but only their own pending/rejected places; moderators/admins can see all places regardless of status
+  - Notes: Regular users can see all approved places but only their own pending/rejected places; moderators/admins can see all places regardless of status; Use limit=0 to retrieve all results without pagination
 
 - `GET /places/{id}` - Get a specific place by ID
   - Headers: `Authorization: Bearer <token>`

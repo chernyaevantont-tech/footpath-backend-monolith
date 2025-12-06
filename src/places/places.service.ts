@@ -220,32 +220,68 @@ export class PlacesService {
           );
       }
 
-      // Set pagination
-      const page = filterDto.page || 1;
-      const limit = Math.min(filterDto.limit || 10, 100); // Max 100 results per page
-      const offset = (page - 1) * limit;
+      // Apply pagination only if both page and limit are provided and limit > 0
+      if (filterDto.page !== undefined && filterDto.limit !== undefined && filterDto.limit > 0) {
+        const page = filterDto.page || 1;
+        const limit = Math.min(filterDto.limit, 100); // Max 100 results per page
+        const offset = (page - 1) * limit;
 
-      queryBuilder
-        .orderBy('place.createdAt', 'DESC')
-        .limit(limit)
-        .offset(offset);
+        queryBuilder
+          .orderBy('place.createdAt', 'DESC')
+          .limit(limit)
+          .offset(offset);
+      } else {
+        // If no pagination parameters provided or limit is 0, order by creation date but don't limit results
+        queryBuilder
+          .orderBy('place.createdAt', 'DESC');
+      }
 
       // Execute query
-      const [places, total] = await queryBuilder.getManyAndCount();
+      let places;
+      let total;
+
+      if (filterDto.page !== undefined && filterDto.limit !== undefined && filterDto.limit > 0) {
+        // Use pagination
+        const page = filterDto.page || 1;
+        const limit = Math.min(filterDto.limit, 100); // Max 100 results per page
+        const offset = (page - 1) * limit;
+
+        [places, total] = await queryBuilder
+          .limit(limit)
+          .offset(offset)
+          .getManyAndCount();
+      } else {
+        // No pagination - get all results
+        places = await queryBuilder.getMany();
+        total = await queryBuilder.getCount(); // Get total count from DB without limit
+      }
+
       this.logger.log(`Found ${places.length} places out of total ${total}`);
 
       // Convert to DTOs
       const placesDto = places.map(place => this.entityToDto(place));
 
-      const result = {
-        data: placesDto,
-        meta: {
-          page,
-          limit,
-          total,
-          pages: Math.ceil(total / limit),
-        },
-      };
+      let result;
+      if (filterDto.page !== undefined && filterDto.limit !== undefined && filterDto.limit > 0) {
+        // Include pagination metadata when pagination is used
+        const page = filterDto.page || 1;
+        const limit = Math.min(filterDto.limit, 100);
+        result = {
+          data: placesDto,
+          meta: {
+            page,
+            limit,
+            total,
+            pages: Math.ceil(total / limit),
+          },
+        };
+      } else {
+        // Return just the data when no pagination or limit=0
+        result = {
+          data: placesDto,
+          meta: null // No pagination metadata
+        };
+      }
 
       // Cache the result for 5 minutes (300 seconds)
       await this.redisService.setJson(cacheKey, result, 300);
