@@ -1,6 +1,9 @@
 import { Injectable, Logger, BadRequestException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Driver, Session } from 'neo4j-driver';
 import { Inject } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, In } from 'typeorm';
+import { User } from '../auth/entities/user.entity';
 import { SendFriendRequestDto } from './dto/send-friend-request.dto';
 import { AcceptFriendRequestDto } from './dto/accept-friend-request.dto';
 import { FriendRequest, FriendRequestStatus } from './entities/friend-request.entity';
@@ -13,7 +16,10 @@ import { SendFriendRequestResponseDto } from './dto/send-friend-request-response
 export class FriendsService {
   private readonly logger = new Logger(FriendsService.name);
 
-  constructor(@Inject('NEO4J_DRIVER') private readonly driver: Driver) {}
+  constructor(
+    @Inject('NEO4J_DRIVER') private readonly driver: Driver,
+    @InjectRepository(User) private userRepository: Repository<User>,
+  ) {}
 
   private getSession(): Session {
     return this.driver.session();
@@ -26,11 +32,26 @@ export class FriendsService {
     try {
       const result = await session.run(CypherQueries.GET_FRIENDS, { userId });
 
-      const friends = result.records.map(record => {
+      // Extract friend IDs from Neo4j result
+      const friendIds = result.records.map(record => record.get('id'));
+
+      if (friendIds.length === 0) {
+        return { friends: [], count: 0 };
+      }
+
+      // Fetch detailed user information from Postgres
+      const friendUsers = await this.userRepository.find({
+        where: { id: In(friendIds) },
+        select: ['id', 'email', 'username', 'createdAt'],
+      });
+
+      // Map to DTOs
+      const friends = friendUsers.map(user => {
         const friendDto = new FriendResponseDto();
-        friendDto.id = record.get('id');
-        friendDto.email = record.get('email');
-        friendDto.createdAt = record.get('createdAt') ? new Date(record.get('createdAt')) : new Date();
+        friendDto.id = user.id;
+        friendDto.email = user.email;
+        friendDto.username = user.username;
+        friendDto.createdAt = user.createdAt;
         return friendDto;
       });
 
@@ -100,9 +121,17 @@ export class FriendsService {
 
       const requestId = result.records[0].get('requestId');
 
+      // Fetch sender's information to include in response
+      const senderUser = await this.userRepository.findOne({
+        where: { id: senderId },
+        select: ['email', 'username'],
+      });
+
       const responseDto = new SendFriendRequestResponseDto();
       responseDto.requestId = requestId;
       responseDto.senderId = senderId;
+      responseDto.senderUsername = senderUser?.username || null;
+      responseDto.senderEmail = senderUser?.email || '';
       responseDto.receiverId = receiverId;
       responseDto.status = FriendRequestStatus.PENDING;
       responseDto.createdAt = new Date().toISOString();
@@ -166,9 +195,17 @@ export class FriendsService {
         throw new BadRequestException('Failed to update friend request');
       }
 
+      // Fetch sender's information to include in response
+      const senderUser = await this.userRepository.findOne({
+        where: { id: senderId },
+        select: ['email', 'username'],
+      });
+
       const responseDto = new FriendRequestResponseDto();
       responseDto.id = result.records[0].get('requestId');
       responseDto.senderId = senderId;
+      responseDto.senderUsername = senderUser?.username || null;
+      responseDto.senderEmail = senderUser?.email || '';
       responseDto.receiverId = receiverId;
       responseDto.status = result.records[0].get('status');
       responseDto.createdAt = new Date(request.get('createdAt'));
@@ -236,10 +273,31 @@ export class FriendsService {
         status,
       });
 
+      // Extract sender IDs to fetch detailed user information
+      const senderIds = result.records.map(record => record.get('senderId'));
+      if (senderIds.length === 0) {
+        return { requests: [], count: 0 };
+      }
+
+      // Fetch detailed user information from Postgres
+      const senders = await this.userRepository.find({
+        where: { id: In(senderIds) },
+        select: ['id', 'email', 'username'],
+      });
+
+      // Create a map of user details by ID for quick lookup
+      const userMap = new Map();
+      senders.forEach(user => {
+        userMap.set(user.id, { email: user.email, username: user.username });
+      });
+
       const requests = result.records.map(record => {
         const requestDto = new FriendRequestResponseDto();
         requestDto.id = record.get('id');
         requestDto.senderId = record.get('senderId');
+        const senderInfo = userMap.get(requestDto.senderId);
+        requestDto.senderUsername = senderInfo?.username || null;
+        requestDto.senderEmail = senderInfo?.email || '';
         requestDto.receiverId = userId;
         requestDto.status = record.get('status');
         requestDto.createdAt = new Date(record.get('createdAt'));
@@ -267,11 +325,43 @@ export class FriendsService {
         status: FriendRequestStatus.PENDING,
       });
 
+      // Extract receiver IDs to fetch detailed user information
+      const receiverIds = result.records.map(record => record.get('receiverId'));
+      if (receiverIds.length === 0) {
+        return { requests: [], count: 0 };
+      }
+
+      // Fetch detailed user information from Postgres
+      const receivers = await this.userRepository.find({
+        where: { id: In(receiverIds) },
+        select: ['id', 'email', 'username'],
+      });
+
+      // Create a map of user details by ID for quick lookup
+      const userMap = new Map();
+      receivers.forEach(user => {
+        userMap.set(user.id, { email: user.email, username: user.username });
+      });
+
       const requests = result.records.map(record => {
         const requestDto = new FriendRequestResponseDto();
         requestDto.id = record.get('id');
-        requestDto.senderId = userId;
-        requestDto.receiverId = record.get('receiverId');
+        requestDto.senderId = userId; // Current user is the sender
+        requestDto.receiverId = record.get('receiverId'); // This is who received the request
+
+        // For sent requests, we still want to show the SENDER's info (which is the current user)
+        // but in this case, we're fetching the RECEIVER's info to show who the request was sent to
+        const receiverInfo = userMap.get(requestDto.receiverId);
+        if (receiverInfo) {
+          // These fields refer to the original "sender" of the request, but since this is a "sent" request,
+          // it's confusing. For "sent" requests, mobile clients probably want to know who they sent the request to
+          requestDto.senderUsername = receiverInfo.username; // Username of who received the request
+          requestDto.senderEmail = receiverInfo.email;       // Email of who received the request
+        } else {
+          requestDto.senderUsername = null;
+          requestDto.senderEmail = '';
+        }
+
         requestDto.status = record.get('status');
         requestDto.createdAt = new Date(record.get('createdAt'));
         // Note: updatedAt is not available from the Cypher query, so we use createdAt

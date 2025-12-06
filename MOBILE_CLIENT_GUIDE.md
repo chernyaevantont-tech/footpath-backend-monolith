@@ -47,23 +47,23 @@ The backend uses Redis for caching to improve performance:
 #### Authentication APIs
 - `POST /auth/register` - User registration
   - Request Body: `{"email": "string", "password": "string"}`
-  - Response: `{"user": {"id": "string", "email": "string", "role": "string"}, "token": "string"}`
+  - Response: `{"user": {"id": "string", "email": "string", "username": "string", "role": "string"}, "token": "string"}`
   - Error Codes: 400 (Bad Request), 409 (Conflict - email already exists)
 
 - `POST /auth/login` - User login
   - Request Body: `{"email": "string", "password": "string"}`
-  - Response: `{"user": {"id": "string", "email": "string", "role": "string"}, "token": "string"}`
+  - Response: `{"user": {"id": "string", "email": "string", "username": "string", "role": "string"}, "token": "string"}`
   - Error Codes: 400 (Bad Request), 401 (Unauthorized)
 
 - `GET /auth/me` - Get current user profile
   - Headers: `Authorization: Bearer <token>`
-  - Response: `{"id": "string", "email": "string", "role": "string", "createdAt": "datetime", "updatedAt": "datetime"}`
+  - Response: `{"id": "string", "email": "string", "username": "string", "role": "string", "createdAt": "datetime", "updatedAt": "datetime"}`
   - Error Codes: 401 (Unauthorized)
 
 - `PUT /auth/profile` - Update user profile
   - Headers: `Authorization: Bearer <token>`
-  - Request Body: `{"name": "string", "bio": "string"}`
-  - Response: `{"id": "string", "email": "string", "role": "string", "name": "string", "bio": "string"}`
+  - Request Body: `{"email": "string", "username": "string", "name": "string"}`
+  - Response: `{"id": "string", "email": "string", "username": "string", "role": "string", "name": "string"}`
   - Error Codes: 401 (Unauthorized)
 
 - `POST /auth/logout` - User logout
@@ -84,7 +84,7 @@ The backend uses Redis for caching to improve performance:
 - `POST /auth/register-moderator` - Admin register a new moderator/admin user (admin only)
   - Headers: `Authorization: Bearer <token>`
   - Request Body: `{"email": "string", "password": "string", "role": "moderator|admin"}`
-  - Response: `{"user": {"id": "string", "email": "string", "role": "string"}, "token": "string"}`
+  - Response: `{"user": {"id": "string", "email": "string", "username": "string", "role": "string"}, "token": "string"}`
   - Error Codes: 401 (Unauthorized), 403 (Forbidden - only admins can register moderators), 400 (Bad Request - invalid role, email already exists, weak password, etc.)
 
 #### Places APIs
@@ -130,19 +130,19 @@ The Place object returned by these APIs now includes:
 #### Friends APIs
 - `GET /friends` - Get list of friends
   - Headers: `Authorization: Bearer <token>`
-  - Response: `{"data": [{"id": "string", "email": "string", "name": "string"}], "count": "number"}`
+  - Response: `{"data": [{"id": "string", "email": "string", "username": "string", "createdAt": "datetime"}], "count": "number"}`
   - Error Codes: 401 (Unauthorized)
 
 - `POST /friends/requests` - Send friend request
   - Headers: `Authorization: Bearer <token>`
   - Request Body: `{"receiverId": "string"}`
-  - Response: `{"id": "string", "senderId": "string", "receiverId": "string", "status": "pending"}`
+  - Response: `{"requestId": "string", "senderId": "string", "senderUsername": "string", "senderEmail": "string", "receiverId": "string", "status": "pending", "createdAt": "datetime"}`
   - Error Codes: 401 (Unauthorized), 404 (User not found)
 
 - `POST /friends/requests/{id}/accept` - Accept/decline friend request
   - Headers: `Authorization: Bearer <token>`
   - Request Body: `{"status": "accepted|declined"}`
-  - Response: `{"id": "string", "senderId": "string", "receiverId": "string", "status": "accepted|declined"}`
+  - Response: `{"id": "string", "senderId": "string", "senderUsername": "string", "senderEmail": "string", "receiverId": "string", "status": "accepted|declined", "createdAt": "datetime", "updatedAt": "datetime"}`
   - Error Codes: 401 (Unauthorized), 404 (Request not found)
 
 - `DELETE /friends/{userId}` - Remove friend
@@ -354,6 +354,7 @@ The mobile application will have different UI flows based on user role:
 data class User(
     @PrimaryKey val userId: String,
     val email: String,
+    val username: String?, // Can be null initially, user can set it later
     val role: String, // "user", "moderator", "admin"
     val createdAt: Date,
     val updatedAt: Date
@@ -387,7 +388,24 @@ data class Place(
 data class Friend(
     val userId: String,
     val friendId: String,
+    val username: String?, // Username of the friend (can be null if not set)
+    val email: String,
     val createdAt: Date
+)
+```
+
+#### FriendRequest Entity
+```
+@Entity(tableName = "friend_requests")
+data class FriendRequest(
+    @PrimaryKey val requestId: String,
+    val senderId: String,
+    val senderUsername: String?, // Username of the sender (can be null if not set)
+    val senderEmail: String,
+    val receiverId: String,
+    val status: String, // "pending", "accepted", "rejected"
+    val createdAt: Date,
+    val updatedAt: Date
 )
 ```
 
@@ -419,6 +437,20 @@ data class Path(
     val places: List<String>, // list of place IDs
     val createdAt: Date,
     val updatedAt: Date
+)
+```
+
+#### Notification Entity
+```
+@Entity(tableName = "notifications")
+data class Notification(
+    @PrimaryKey val notificationId: String,
+    val userId: String,
+    val type: String,
+    val title: String,
+    val message: String,
+    val isRead: Boolean,
+    val createdAt: Date
 )
 ```
 

@@ -53,7 +53,7 @@ export class CypherQueries {
   // Get friends of a user
   static GET_FRIENDS = `
     MATCH (user:User {id: $userId})-[:FRIENDS]-(friend:User)
-    RETURN friend.id as id, friend.email as email, friend.name as name
+    RETURN friend.id as id, friend.email as email, friend.username as username, friend.createdAt as createdAt
   `;
 
   // Remove friend (delete the FRIENDS relationship in both directions)

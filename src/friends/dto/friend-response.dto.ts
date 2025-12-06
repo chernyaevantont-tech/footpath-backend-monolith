@@ -15,6 +15,13 @@ export class FriendResponseDto {
   email: string;
 
   @ApiProperty({
+    example: 'johndoe',
+    description: 'Username of the friend (can be null if not set)',
+    nullable: true,
+  })
+  username: string;
+
+  @ApiProperty({
     example: '2023-01-01T00:00:00.000Z',
     description: 'Date when the friendship was established',
   })

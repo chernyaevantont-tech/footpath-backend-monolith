@@ -15,6 +15,19 @@ export class FriendRequestResponseDto {
   senderId: string;
 
   @ApiProperty({
+    example: 'john_doe',
+    description: 'Username of the user who sent the friend request',
+    nullable: true,
+  })
+  senderUsername: string;
+
+  @ApiProperty({
+    example: 'john@example.com',
+    description: 'Email of the user who sent the friend request',
+  })
+  senderEmail: string;
+
+  @ApiProperty({
     example: 'c1d2e3f4-g5h6-7890-1234-567890abcdef',
     description: 'ID of the user who received the friend request',
   })
