@@ -1,6 +1,7 @@
 import { IsString, IsNotEmpty, IsOptional, IsArray, ArrayMaxSize, IsEnum, ValidateNested, IsNumber, Min, Max } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { transformCoordinates } from './coordinates-transformer';
 import { PlaceStatus } from '../../entities/place.entity';
 
 export class CoordinatesDto {
@@ -51,6 +52,7 @@ export class CreatePlaceDto {
     },
     description: 'Coordinates of the place',
   })
+  @Transform(transformCoordinates, { toClassOnly: true })
   @ValidateNested()
   @Type(() => CoordinatesDto)
   coordinates: CoordinatesDto;

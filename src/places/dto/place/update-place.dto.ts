@@ -1,6 +1,7 @@
 import { IsString, IsOptional, IsArray, ArrayMaxSize, ValidateNested, IsNumber, Min, Max } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { transformCoordinates } from './coordinates-transformer';
 
 export class UpdateCoordinatesDto {
   @ApiPropertyOptional({
@@ -20,7 +21,7 @@ export class UpdateCoordinatesDto {
     minimum: -90,
     maximum: 90,
   })
-  @IsNumber()2
+  @IsNumber()
   @Min(-90)
   @Max(90)
   latitude: number;
@@ -50,9 +51,10 @@ export class UpdatePlaceDto {
     },
     description: 'New coordinates of the place',
   })
+  @IsOptional()
+  @Transform(transformCoordinates, { toClassOnly: true })
   @ValidateNested()
   @Type(() => UpdateCoordinatesDto)
-  @IsOptional()
   coordinates?: UpdateCoordinatesDto;
 
   @ApiPropertyOptional({

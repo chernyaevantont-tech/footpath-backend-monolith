@@ -30,9 +30,8 @@ export class TagsController {
 
   constructor(private readonly placesService: PlacesService) {}
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.MODERATOR, UserRole.ADMIN)
-  @UseGuards(RolesGuard)
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new tag (moderator only)' })
@@ -78,9 +77,8 @@ export class TagsController {
     return await this.placesService.getTagById(id);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.MODERATOR, UserRole.ADMIN)
-  @UseGuards(RolesGuard)
   @Put(':id')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Update a tag by ID (moderator only)' })
@@ -106,9 +104,8 @@ export class TagsController {
     return await this.placesService.updateTag(id, updateTagDto);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.MODERATOR, UserRole.ADMIN)
-  @UseGuards(RolesGuard)
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Delete a tag by ID (moderator only)' })
