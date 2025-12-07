@@ -342,6 +342,11 @@ export class PlacesService {
       throw new UnauthorizedException('You do not have permission to update this place');
     }
 
+    // Auto-transition rejected places to pending when edited by user
+    const shouldTransitionToPending = place.status === PlaceStatus.REJECTED && 
+                                      place.creatorId === updaterId && 
+                                      userRole === 'user';
+
     // Update fields if they're provided
     if (updatePlaceDto.name) {
       place.name = updatePlaceDto.name;
@@ -384,10 +389,17 @@ export class PlacesService {
         place.generateHashOnUpdate();
 
         // Update the place with new coordinates using proper PostGIS functions
-        await queryRunner.query(
-          `UPDATE places SET name = $1, description = $2, coordinates = ST_SetSRID(ST_GeomFromText($3), 4326), updated_at = $4, content_hash = $5 WHERE id = $6`,
-          [updateData.name, updateData.description, wktString, new Date(), place.contentHash, id]
-        );
+        if (shouldTransitionToPending) {
+          await queryRunner.query(
+            `UPDATE places SET name = $1, description = $2, coordinates = ST_SetSRID(ST_GeomFromText($3), 4326), updated_at = $4, content_hash = $5, status = $6 WHERE id = $7`,
+            [updateData.name, updateData.description, wktString, new Date(), place.contentHash, PlaceStatus.PENDING, id]
+          );
+        } else {
+          await queryRunner.query(
+            `UPDATE places SET name = $1, description = $2, coordinates = ST_SetSRID(ST_GeomFromText($3), 4326), updated_at = $4, content_hash = $5 WHERE id = $6`,
+            [updateData.name, updateData.description, wktString, new Date(), place.contentHash, id]
+          );
+        }
 
         // Handle tags separately if they were provided
         if (updatePlaceDto.tagIds !== undefined) {
@@ -448,10 +460,17 @@ export class PlacesService {
         place.generateHashOnUpdate();
 
         // Update the place without coordinates
-        await queryRunner.query(
-          `UPDATE places SET name = $1, description = $2, updated_at = $3, content_hash = $4 WHERE id = $5`,
-          [updateData.name, updateData.description, new Date(), place.contentHash, id]
-        );
+        if (shouldTransitionToPending) {
+          await queryRunner.query(
+            `UPDATE places SET name = $1, description = $2, updated_at = $3, content_hash = $4, status = $5 WHERE id = $6`,
+            [updateData.name, updateData.description, new Date(), place.contentHash, PlaceStatus.PENDING, id]
+          );
+        } else {
+          await queryRunner.query(
+            `UPDATE places SET name = $1, description = $2, updated_at = $3, content_hash = $4 WHERE id = $5`,
+            [updateData.name, updateData.description, new Date(), place.contentHash, id]
+          );
+        }
 
         // Handle tags separately if they were provided
         if (updatePlaceDto.tagIds !== undefined) {
@@ -626,7 +645,12 @@ export class PlacesService {
       return true;
     }
 
-    // Regular users cannot update places
+    // Regular users can update their own pending or rejected places
+    if (place.creatorId === userId && 
+        (place.status === PlaceStatus.PENDING || place.status === PlaceStatus.REJECTED)) {
+      return true;
+    }
+
     return false;
   }
 

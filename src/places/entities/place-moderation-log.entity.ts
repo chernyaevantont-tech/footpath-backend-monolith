@@ -20,7 +20,7 @@ export class PlaceModerationLog {
   @Column({ nullable: true })
   placeId: string;
 
-  @ManyToOne(() => Place, place => place.moderationLogs)
+  @ManyToOne(() => Place, place => place.moderationLogs, { onDelete: 'CASCADE' })
   place: Place;
 
   @Column({ nullable: true })

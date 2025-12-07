@@ -108,12 +108,15 @@ The backend uses Redis for caching to improve performance:
   - Response: `{"id": "string", "name": "string", "description": "string", "coordinates": {"type": "string", "coordinates": ["number"]}, "tagIds": ["string"], "status": "string", "creatorId": "string", "moderatorId": "string", "createdAt": "datetime", "updatedAt": "datetime"}`
   - Error Codes: 401 (Unauthorized), 404 (Place not found)
 
-- `PUT /places/{id}` - Update a place (moderators/admins can update approved places only)
+- `PUT /places/{id}` - Update a place
   - Headers: `Authorization: Bearer <token>`
   - Request Body: `{"name": "string", "description": "string", "coordinates": {"latitude": "number", "longitude": "number"}}`
   - Response: `{"id": "string", "name": "string", "description": "string", "coordinates": {"type": "string", "coordinates": ["number"]}, "tagIds": ["string"], "status": "string", "creatorId": "string", "moderatorId": "string", "createdAt": "datetime", "updatedAt": "datetime"}`
   - Error Codes: 401 (Unauthorized), 403 (Forbidden - insufficient permissions), 404 (Place not found)
-  - Notes: Regular users cannot update places; only moderators/admins can update approved places
+  - Notes: 
+    - Regular users can update their own pending or rejected places
+    - Rejected places automatically transition to pending status when edited by the creator
+    - Moderators/admins can update approved places of any user
 
 - `DELETE /places/{id}` - Delete a place
   - Headers: `Authorization: Bearer <token>`
