@@ -11,6 +11,7 @@ import { PathFilterDto } from './dto/path-filter.dto';
 import { PathStatus } from './entities/path.entity';
 import { PathCalculationService } from './utils/path-calculation.service';
 import { AdvancedPathfindingService } from './utils/advanced-pathfinding.service';
+import { OSRMService } from './utils/osrm.service';
 import { PathResponseDto } from './dto/path-response.dto';
 import { PathPlaceResponseDto } from './dto/path-place-response.dto';
 import { PathsListResponseDto } from './dto/paths-list-response.dto';
@@ -30,10 +31,11 @@ export class PathsService {
     private placeRepository: Repository<Place>,
     private pathCalculationService: PathCalculationService,
     private advancedPathfindingService: AdvancedPathfindingService,
+    private osrmService: OSRMService,
   ) {}
 
   // Helper method to convert Path entity to PathResponseDto
-  private entityToDto(path: Path): PathResponseDto {
+  private async entityToDto(path: Path): Promise<PathResponseDto> {
     const dto = new PathResponseDto();
     dto.id = path.id;
     dto.name = path.name;
@@ -87,7 +89,49 @@ export class PathsService {
     // This could be added if needed
     dto.creator = path.creator ? this.mapUserToDto(path.creator) : null;
 
+    // Generate route geometry using OSRM
+    dto.geometry = await this.generateRouteGeometry(path);
+
     return dto;
+  }
+
+  /**
+   * Generate route geometry using OSRM
+   */
+  private async generateRouteGeometry(path: Path): Promise<{ type: 'LineString'; coordinates: number[][] } | null> {
+    try {
+      // Extract coordinates from path places
+      if (!path.pathPlaces || path.pathPlaces.length < 2) {
+        this.logger.warn(`Path ${path.id} has less than 2 places, cannot generate geometry`);
+        return null;
+      }
+
+      // Sort places by order
+      const sortedPlaces = [...path.pathPlaces].sort((a, b) => a.order - b.order);
+
+      // Extract coordinates from places
+      const coordinates = sortedPlaces
+        .filter(pp => pp.place && pp.place.coordinates)
+        .map(pp => {
+          const geoJson = pp.place.coordinates as any;
+          const [longitude, latitude] = geoJson.coordinates;
+          return { longitude, latitude };
+        });
+
+      if (coordinates.length < 2) {
+        this.logger.warn(`Path ${path.id} has insufficient valid coordinates`);
+        return null;
+      }
+
+      // Call OSRM to calculate route
+      const route = await this.osrmService.calculateRoute(coordinates);
+
+      return route.geometry;
+    } catch (error) {
+      this.logger.error(`Failed to generate geometry for path ${path.id}: ${error.message}`);
+      // Return null instead of throwing to allow path to be returned without geometry
+      return null;
+    }
   }
 
   private mapUserToDto(user: any): UserResponseDto {
@@ -180,7 +224,7 @@ export class PathsService {
       relations: ['pathPlaces', 'pathPlaces.place', 'creator']
     });
 
-    return this.entityToDto(fullPath);
+    return await this.entityToDto(fullPath);
   }
 
   async findPaths(filterDto: PathFilterDto, userId?: string) {
@@ -230,7 +274,7 @@ export class PathsService {
     const [paths, total] = await queryBuilder.getManyAndCount();
 
     return {
-      data: paths.map(path => this.entityToDto(path)),
+      data: await Promise.all(paths.map(path => this.entityToDto(path))),
       meta: {
         page,
         limit,
@@ -255,7 +299,7 @@ export class PathsService {
       throw new NotFoundException('Path not found or you do not have access to this path');
     }
 
-    return this.entityToDto(path);
+    return await this.entityToDto(path);
   }
 
   async updatePath(id: string, updatePathDto: UpdatePathDto, userId: string) {
@@ -353,7 +397,7 @@ export class PathsService {
       relations: ['pathPlaces', 'pathPlaces.place', 'creator']
     });
 
-    return this.entityToDto(fullPath);
+    return await this.entityToDto(fullPath);
   }
 
   async deletePath(id: string, userId: string) {

@@ -74,4 +74,21 @@ export class PathResponseDto {
     description: 'Date when the path was last updated',
   })
   updatedAt: Date;
+
+  @ApiProperty({
+    example: {
+      type: 'LineString',
+      coordinates: [
+        [37.6173, 55.7558],
+        [37.6175, 55.7560],
+        [37.6180, 55.7565],
+      ],
+    },
+    description: 'GeoJSON LineString representing the route geometry',
+    nullable: true,
+  })
+  geometry: {
+    type: 'LineString';
+    coordinates: number[][];
+  } | null;
 }

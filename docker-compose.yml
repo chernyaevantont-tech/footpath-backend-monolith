@@ -18,6 +18,7 @@ services:
       - NEO4J_PASSWORD=letmein123
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - OSRM_URL=http://osrm:5000
       - JWT_SECRET=your_jwt_secret_key_change_this_in_production
       - JWT_EXPIRES_IN=24h
       - DEFAULT_ADMIN_EMAIL=admin@footpath.com
@@ -28,6 +29,8 @@ services:
       neo4j:
         condition: service_healthy
       redis:
+        condition: service_started
+      osrm:
         condition: service_started
     entrypoint: ["/usr/local/bin/wait-for-it.sh", "-t", "60", "postgres:5432", "neo4j:7687", "redis:6379", "--"]
     command: ["/bin/sh", "-c", "npm run migration:run && node dist/main.js"]
@@ -92,6 +95,37 @@ services:
     volumes:
       - redis_data:/data
 
+  # OSRM for route calculation (Russia ONLY)
+  # Auto-downloads and prepares map data on first run (~3.5GB, takes 30-60 minutes)
+  # OSRM preparation service (run once before first start)
+  osrm-prepare:
+    build:
+      context: .
+      dockerfile: Dockerfile.osrm
+    volumes:
+      - osrm_data:/data
+    entrypoint: ["/osrm-prepare.sh"]
+    profiles:
+      - tools
+
+  # OSRM routing service
+  # Run 'docker-compose run --rm osrm-prepare' before first use
+  osrm:
+    build:
+      context: .
+      dockerfile: Dockerfile.osrm
+    ports:
+      - "5000:5000"
+    volumes:
+      - osrm_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 5000 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
 volumes:
   postgres_data:
   neo4j_data:
@@ -99,3 +133,4 @@ volumes:
   neo4j_import:
   neo4j_plugins:
   redis_data:
+  osrm_data:

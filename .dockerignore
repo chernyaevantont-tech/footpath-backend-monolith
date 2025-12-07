@@ -23,3 +23,5 @@ dist/**
 dist/*
 !dist/**
 !dist/*
+osrm-data
+osrm-data/**
