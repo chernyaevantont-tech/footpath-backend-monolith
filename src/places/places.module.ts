@@ -1,6 +1,5 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { RedisModule } from '../common/redis.module';
 import { PlacesController } from './places.controller';
 import { TagsController } from './tags.controller';
 import { PlacesService } from './places.service';
@@ -12,7 +11,6 @@ import { RecommendationsModule } from '../recommendations/recommendations.module
 @Module({
   imports: [
     TypeOrmModule.forFeature([Place, Tag, PlaceModerationLog]),
-    RedisModule,
     forwardRef(() => RecommendationsModule), // For circular dependency
   ],
   controllers: [PlacesController, TagsController],

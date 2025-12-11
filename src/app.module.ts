@@ -10,7 +10,6 @@ import { FriendsModule } from './friends/friends.module';
 import { WalksModule } from './walks/walks.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { RecommendationsModule } from './recommendations/recommendations.module';
-import { RedisModule } from './common/redis.module';
 
 @Module({
   imports: [
@@ -49,7 +48,6 @@ import { RedisModule } from './common/redis.module';
     WalksModule,
     NotificationsModule,
     RecommendationsModule,
-    RedisModule,
   ],
   controllers: [AppController],
   providers: [AppService],

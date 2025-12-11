@@ -9,7 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { PasswordUtil } from './utils/password.util';
-import { RedisService } from '../common/redis.service';
+
 import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { UserResponseDto } from './dto/user-response.dto';
 
@@ -19,7 +19,6 @@ describe('AuthService', () => {
   let mockPasswordResetTokenRepository: Partial<Repository<PasswordResetToken>>;
   let mockJwtService: Partial<JwtService>;
   let mockConfigService: Partial<ConfigService>;
-  let mockRedisService: Partial<RedisService>;
 
   const mockUser = {
     id: '1',
@@ -55,12 +54,6 @@ describe('AuthService', () => {
       }),
     };
 
-    mockRedisService = {
-      setJson: jest.fn(),
-      getJson: jest.fn(),
-      del: jest.fn(),
-    };
-
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
@@ -79,10 +72,6 @@ describe('AuthService', () => {
         {
           provide: ConfigService,
           useValue: mockConfigService,
-        },
-        {
-          provide: RedisService,
-          useValue: mockRedisService,
         },
       ],
     }).compile();
@@ -179,42 +168,17 @@ describe('AuthService', () => {
 
       expect(result.user.email).toBe(mockUser.email);
       expect(result.token).toBe('mockToken');
-      expect(mockRedisService.setJson).toHaveBeenCalledWith(
-        `session:${mockUser.id}`,
-        expect.objectContaining({
-          userId: mockUser.id,
-          email: mockUser.email,
-        }),
-        86400 // 24 hours in seconds
-      );
     });
   });
 
   describe('getProfile', () => {
-    it('should return user profile from cache if available', async () => {
-      const cachedUser = { ...mockUser };
-      (mockRedisService.getJson as jest.Mock).mockResolvedValue(cachedUser);
-
-      const result = await service.getProfile('1');
-
-      expect(result).toBeInstanceOf(UserResponseDto);
-      expect(result.id).toBe(cachedUser.id);
-      expect(mockUserRepository.findOne).not.toHaveBeenCalled();
-    });
-
-    it('should return user profile from database if not cached', async () => {
-      (mockRedisService.getJson as jest.Mock).mockResolvedValue(null);
+    it('should return user profile from database', async () => {
       (mockUserRepository.findOne as jest.Mock).mockResolvedValue(mockUser);
 
       const result = await service.getProfile('1');
 
       expect(result).toBeInstanceOf(UserResponseDto);
       expect(result.id).toBe(mockUser.id);
-      expect(mockRedisService.setJson).toHaveBeenCalledWith(
-        `user:profile:1`,
-        mockUser,
-        3600
-      );
     });
   });
 

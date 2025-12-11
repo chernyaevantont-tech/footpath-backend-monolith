@@ -42,7 +42,6 @@
     "passport-local": "^1.0.0",
     "pg": "^8.11.0",
     "pgvector": "^0.1.7",
-    "redis": "^4.6.7",
     "reflect-metadata": "^0.1.13",
     "rxjs": "^7.8.1",
     "swagger-ui-express": "^5.0.0",

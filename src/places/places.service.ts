@@ -13,7 +13,6 @@ import { ModerationAction } from './entities/place-moderation-log.entity';
 import { User, UserRole } from '../auth/entities/user.entity';
 import { RecommendationsService } from '../recommendations/recommendations.service';
 import { GenerateEmbeddingDto } from '../recommendations/dto/recommendation.dto';
-import { RedisService } from '../common/redis.service';
 import { PlaceResponseDto } from './dto/place/place-response.dto';
 import { TagResponseDto } from './dto/tag/tag-response.dto';
 import { CreateTagDto } from './dto/tag/create-tag.dto';
@@ -32,7 +31,6 @@ export class PlacesService {
     private moderationLogRepository: Repository<PlaceModerationLog>,
     @Inject(forwardRef(() => RecommendationsService))
     private recommendationsService: RecommendationsService,
-    private redisService: RedisService,
   ) {}
 
   // Helper method to convert Place entity to PlaceResponseDto
@@ -169,17 +167,6 @@ export class PlacesService {
   async findPlaces(filterDto: PlaceFilterDto, user?: { id: string; role: string }) {
     this.logger.log('Finding places with filters', { filterDto, userId: user?.id, userRole: user?.role });
 
-    // Generate cache key from filter parameters
-    const filterKey = JSON.stringify({ ...filterDto, userId: user?.id, userRole: user?.role });
-    const cacheKey = `places:search:${filterKey}`;
-
-    // Try to get from cache first
-    const cachedResult = await this.redisService.getJson(cacheKey);
-    if (cachedResult) {
-      this.logger.log(`Cache hit for key: ${cacheKey}`);
-      return cachedResult;
-    }
-
     try {
       // Build query with filters - including relation to tags
       const queryBuilder = this.placeRepository.createQueryBuilder('place')
@@ -291,10 +278,6 @@ export class PlacesService {
           meta: null // No pagination metadata
         };
       }
-
-      // Cache the result for 5 minutes (300 seconds)
-      await this.redisService.setJson(cacheKey, result, 300);
-      this.logger.log(`Results cached for key: ${cacheKey}`);
 
       return result;
     } catch (error) {

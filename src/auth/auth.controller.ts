@@ -147,27 +147,6 @@ export class AuthController {
     return { message: 'Password has been reset successfully.' };
   }
 
-  @UseGuards(JwtAuthGuard)
-  @Post('logout')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Logout user', operationId: 'logout' })
-  @ApiBearerAuth()
-  @ApiResponse({
-    status: 200,
-    description: 'User logged out successfully',
-    schema: {
-      example: {
-        message: 'Logged out successfully'
-      }
-    }
-  })
-  async logout(@Request() req) {
-    this.logger.log(`Logout request for user ID: ${req.user.id}`);
-    const success = await this.authService.logout(req.user.id);
-    return { message: success ? 'Logged out successfully' : 'Logout completed' };
-  }
-
-
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
   @Post('register-moderator')

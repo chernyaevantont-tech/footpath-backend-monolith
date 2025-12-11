@@ -6,7 +6,7 @@ import { Tag } from './entities/tag.entity';
 import { PlaceModerationLog } from './entities/place-moderation-log.entity';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { RecommendationsService } from '../recommendations/recommendations.service';
-import { RedisService } from '../common/redis.service';
+
 import { CreatePlaceDto } from './dto/place/create-place.dto';
 import { PlaceStatus } from './entities/place.entity';
 import { ModerationAction } from './entities/place-moderation-log.entity';
@@ -20,7 +20,6 @@ describe('PlacesService', () => {
   let mockTagRepository: Partial<Repository<Tag>>;
   let mockModerationLogRepository: Partial<Repository<PlaceModerationLog>>;
   let mockRecommendationsService: Partial<RecommendationsService>;
-  let mockRedisService: Partial<RedisService>;
 
   const mockTag = {
     id: '1',
@@ -76,12 +75,6 @@ describe('PlacesService', () => {
       generateEmbedding: jest.fn(),
     };
 
-    mockRedisService = {
-      setJson: jest.fn(),
-      getJson: jest.fn(),
-      del: jest.fn(),
-    };
-
     mockTagRepository = {
       save: jest.fn(),
       findOne: jest.fn(),
@@ -124,10 +117,6 @@ describe('PlacesService', () => {
         {
           provide: RecommendationsService,
           useValue: mockRecommendationsService,
-        },
-        {
-          provide: RedisService,
-          useValue: mockRedisService,
         },
       ],
     }).compile();
@@ -175,19 +164,7 @@ describe('PlacesService', () => {
   });
 
   describe('findPlaces', () => {
-    it('should return cached results if available', async () => {
-      const mockCachedResult = {
-        data: [mockPlace],
-        meta: { page: 1, limit: 10, total: 1, pages: 1 }
-      };
-      (mockRedisService.getJson as jest.Mock).mockResolvedValue(mockCachedResult);
-
-      const result = await service.findPlaces({});
-
-      expect(result).toEqual(mockCachedResult);
-    });
-
-    it('should query places from database if not cached', async () => {
+    it('should query places from database', async () => {
       const mockQueryBuilder = {
         leftJoinAndSelect: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
@@ -197,7 +174,6 @@ describe('PlacesService', () => {
         getManyAndCount: jest.fn().mockResolvedValue([[mockPlace], 1]),
       };
 
-      (mockRedisService.getJson as jest.Mock).mockResolvedValue(null);
       (mockPlaceRepository.createQueryBuilder as jest.Mock).mockReturnValue(mockQueryBuilder);
 
       const result = await service.findPlaces({});

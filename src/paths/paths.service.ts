@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, Not } from 'typeorm';
 import { Path } from './entities/path.entity';
 import { PathPlace } from './entities/path-place.entity';
-import { Place } from '../places/entities/place.entity';
+import { Place, PlaceStatus } from '../places/entities/place.entity';
 import { CreatePathDto } from './dto/create-path.dto';
 import { UpdatePathDto } from './dto/update-path.dto';
 import { GeneratePathDto } from './dto/generate-path.dto';
@@ -165,7 +165,7 @@ export class PathsService {
   async createPath(createPathDto: CreatePathDto) {
     this.logger.log('Creating new path');
 
-    // Validate that all places in the path exist
+    // Validate that all places in the path exist and are approved
     const placeIds = createPathDto.places.map(p => p.placeId);
     const existingPlaces = await this.placeRepository.findByIds(placeIds);
 
@@ -173,6 +173,13 @@ export class PathsService {
       const foundIds = existingPlaces.map(p => p.id);
       const missingIds = placeIds.filter(id => !foundIds.includes(id));
       throw new BadRequestException(`Places not found: ${missingIds.join(', ')}`);
+    }
+
+    // Check that all places are approved
+    const rejectedPlaces = existingPlaces.filter(p => p.status !== PlaceStatus.APPROVED);
+    if (rejectedPlaces.length > 0) {
+      const rejectedNames = rejectedPlaces.map(p => `${p.name} (${p.status})`).join(', ');
+      throw new BadRequestException(`Only approved places can be added to paths. Rejected/pending places: ${rejectedNames}`);
     }
 
     // Get the places in the correct order
@@ -342,7 +349,7 @@ export class PathsService {
 
     // Update path places if provided
     if (updatePathDto.places) {
-      // Validate that all places exist
+      // Validate that all places exist and are approved
       const placeIds = updatePathDto.places.map(p => p.placeId);
       const existingPlaces = await this.placeRepository.findByIds(placeIds);
 
@@ -350,6 +357,13 @@ export class PathsService {
         const foundIds = existingPlaces.map(p => p.id);
         const missingIds = placeIds.filter(id => !foundIds.includes(id));
         throw new BadRequestException(`Places not found: ${missingIds.join(', ')}`);
+      }
+
+      // Check that all places are approved
+      const rejectedPlaces = existingPlaces.filter(p => p.status !== PlaceStatus.APPROVED);
+      if (rejectedPlaces.length > 0) {
+        const rejectedNames = rejectedPlaces.map(p => `${p.name} (${p.status})`).join(', ');
+        throw new BadRequestException(`Only approved places can be added to paths. Rejected/pending places: ${rejectedNames}`);
       }
 
       // Remove existing path places
@@ -462,11 +476,16 @@ export class PathsService {
     if (criteria.startPlaceId) {
       const startPlace = remainingPlaces.find(p => p.id === criteria.startPlaceId);
       if (startPlace) {
-        selectedPlaces.push(startPlace);
         const coords = this.pathCalculationService.getCoordinatesFromPlace(startPlace);
         currentLat = coords.latitude;
         currentLng = coords.longitude;
-        remainingPlaces.splice(remainingPlaces.indexOf(startPlace), 1);
+        
+        // Only add to selectedPlaces and remove from remaining if maxPlaces > 1
+        // Otherwise it will be selected by the greedy algorithm
+        if (criteria.maxPlaces > 1) {
+          selectedPlaces.push(startPlace);
+          remainingPlaces.splice(remainingPlaces.indexOf(startPlace), 1);
+        }
       }
     } else if (criteria.startLatitude && criteria.startLongitude) {
       currentLat = criteria.startLatitude;
@@ -597,9 +616,36 @@ export class PathsService {
       maxPlaces,
     });
 
+    // Validate startPlaceId and endPlaceId if provided
+    if (generatePathDto.startPlaceId) {
+      const startPlace = await this.placeRepository.findOne({ 
+        where: { id: generatePathDto.startPlaceId } 
+      });
+      if (!startPlace) {
+        throw new BadRequestException(`Start place with ID ${generatePathDto.startPlaceId} not found`);
+      }
+      if (startPlace.status !== PlaceStatus.APPROVED) {
+        throw new BadRequestException(`Start place "${startPlace.name}" is not approved (status: ${startPlace.status})`);
+      }
+    }
+
+    if (effectiveEndPlaceId && effectiveEndPlaceId !== generatePathDto.startPlaceId) {
+      const endPlace = await this.placeRepository.findOne({ 
+        where: { id: effectiveEndPlaceId } 
+      });
+      if (!endPlace) {
+        throw new BadRequestException(`End place with ID ${effectiveEndPlaceId} not found`);
+      }
+      if (endPlace.status !== PlaceStatus.APPROVED) {
+        throw new BadRequestException(`End place "${endPlace.name}" is not approved (status: ${endPlace.status})`);
+      }
+    }
+
     // Find places based on criteria
+    this.logger.log(`Searching for places with status: ${PlaceStatus.APPROVED} (value: "${PlaceStatus.APPROVED}")`);
+    
     let queryBuilder = this.placeRepository.createQueryBuilder('place')
-      .where('place.status = :status', { status: 'approved' });
+      .where('place.status = :status', { status: PlaceStatus.APPROVED });
 
     if (generatePathDto.tags && generatePathDto.tags.length > 0) {
       queryBuilder = queryBuilder.andWhere('place.tagIds && ARRAY[:...tags]', { tags: generatePathDto.tags });
@@ -618,15 +664,32 @@ export class PathsService {
       );
     }
 
+    // Log the SQL query for debugging
+    const sql = queryBuilder.getSql();
+    this.logger.log(`SQL Query: ${sql}`);
+    this.logger.log(`Query parameters:`, queryBuilder.getParameters());
+
     const allPotentialPlaces = await queryBuilder.getMany();
 
-    if (allPotentialPlaces.length === 0) {
+    // Log places with their status for debugging
+    this.logger.log(`Found ${allPotentialPlaces.length} potential places`);
+    allPotentialPlaces.forEach(place => {
+      this.logger.log(`Place: ${place.name}, Status: ${place.status} (type: ${typeof place.status})`);
+    });
+
+    // Double-check: filter out any non-approved places (safety net)
+    const approvedPlaces = allPotentialPlaces.filter(p => p.status === PlaceStatus.APPROVED);
+    if (approvedPlaces.length < allPotentialPlaces.length) {
+      this.logger.warn(`Filtered out ${allPotentialPlaces.length - approvedPlaces.length} non-approved places that passed the query!`);
+    }
+
+    if (approvedPlaces.length === 0) {
       throw new BadRequestException('No places found matching your criteria');
     }
 
     // Select optimal places using new algorithm
     let optimizedPlaces = await this.selectOptimalPlaces(
-      allPotentialPlaces,
+      approvedPlaces,
       {
         startPlaceId: generatePathDto.startPlaceId,
         endPlaceId: effectiveEndPlaceId,
@@ -642,10 +705,19 @@ export class PathsService {
     this.logger.log(`Optimized to ${optimizedPlaces.length} places`);
 
     // Check if we have enough places to build a route
-    if (optimizedPlaces.length < 2) {
+    // Allow 1 place if explicit start/end coordinates are provided
+    const hasExplicitStartOrEnd = (
+      (generatePathDto.startLatitude && generatePathDto.startLongitude && !generatePathDto.startPlaceId) ||
+      (generatePathDto.endLatitude && generatePathDto.endLongitude && !generatePathDto.endPlaceId) ||
+      generatePathDto.isCircular
+    );
+    const minPlaces = hasExplicitStartOrEnd ? 1 : 2;
+
+    if (optimizedPlaces.length < minPlaces) {
       throw new BadRequestException(
-        'Unable to generate route: not enough places found within the specified constraints. ' +
-        'Try increasing totalTime, maxDistance, or reducing maxPlaces.'
+        `Unable to generate route: not enough places found within the specified constraints. ` +
+        `Found ${optimizedPlaces.length} place(s), need at least ${minPlaces}. ` +
+        `Try increasing totalTime, maxDistance, or reducing maxPlaces.`
       );
     }
 
@@ -736,6 +808,8 @@ export class PathsService {
     // Create path-place relationships
     const pathPlaces: PathPlace[] = [];
     for (let i = 0; i < optimizedPlaces.length; i++) {
+      this.logger.log(`Adding place ${i}: ${optimizedPlaces[i].name} (ID: ${optimizedPlaces[i].id}, Status: ${optimizedPlaces[i].status})`);
+      
       const pathPlace = new PathPlace();
       pathPlace.pathId = savedPath.id;
       pathPlace.placeId = optimizedPlaces[i].id;
@@ -769,6 +843,25 @@ export class PathsService {
 
     if (!completePath) {
       throw new NotFoundException('Path was created but could not be retrieved');
+    }
+
+    // Log final places in the response
+    this.logger.log(`Final path contains ${completePath.pathPlaces.length} places:`);
+    completePath.pathPlaces.forEach((pp, idx) => {
+      this.logger.log(`  ${idx}: ${pp.place.name} (Status: ${pp.place.status})`);
+    });
+
+    // CRITICAL: Verify no rejected places made it into the final path
+    const rejectedInPath = completePath.pathPlaces.filter(pp => pp.place.status !== PlaceStatus.APPROVED);
+    if (rejectedInPath.length > 0) {
+      this.logger.error('CRITICAL: Rejected places found in generated path!');
+      rejectedInPath.forEach(pp => {
+        this.logger.error(`  - ${pp.place.name} (ID: ${pp.place.id}, Status: ${pp.place.status})`);
+      });
+      throw new BadRequestException(
+        `Path generation failed: ${rejectedInPath.length} non-approved places were included. ` +
+        `Places: ${rejectedInPath.map(pp => pp.place.name).join(', ')}`
+      );
     }
 
     this.logger.log('Path generation completed successfully', {
