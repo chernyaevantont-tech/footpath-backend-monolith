@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsArray, IsUUID, IsNumber, Min, Max, IsPositive, IsLatitude, IsLongitude } from 'class-validator';
+import { IsString, IsOptional, IsArray, IsUUID, IsNumber, Min, Max, IsPositive, IsLatitude, IsLongitude, IsBoolean } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class GeneratePathDto {
@@ -78,12 +78,26 @@ export class GeneratePathDto {
 
   @ApiProperty({
     example: 120,
-    description: 'Maximum duration of the path in minutes',
-    minimum: 0,
+    description: 'Total time for the entire walk including visiting places (in minutes). System adds 15 min buffer.',
+    minimum: 15,
   })
   @IsNumber()
   @IsPositive()
-  maxDuration?: number; // Maximum duration in minutes
+  @Min(15)
+  totalTime: number; // Total time in minutes
+
+  @ApiPropertyOptional({
+    example: 5,
+    description: 'Maximum number of places to visit during the walk',
+    minimum: 1,
+    maximum: 20,
+  })
+  @IsOptional()
+  @IsNumber()
+  @IsPositive()
+  @Min(1)
+  @Max(20)
+  maxPlaces?: number; // Maximum number of places
 
   @ApiProperty({
     example: 5,
@@ -92,7 +106,19 @@ export class GeneratePathDto {
   })
   @IsNumber()
   @IsPositive()
-  maxDistance?: number; // Maximum distance in kilometers
+  maxDistance: number; // Maximum distance in kilometers
+
+  @ApiProperty({
+    example: 5,
+    description: 'Walking speed in km/h (typical range: 3-7 km/h)',
+    minimum: 2,
+    maximum: 10,
+  })
+  @IsNumber()
+  @IsPositive()
+  @Min(2)
+  @Max(10)
+  walkingSpeed: number; // Walking speed in km/h
 
   @ApiPropertyOptional({
     example: 'Romantic Evening Walk',
@@ -109,4 +135,12 @@ export class GeneratePathDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @ApiPropertyOptional({
+    example: true,
+    description: 'Whether the path should return to the starting point (circular route)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isCircular?: boolean;
 }

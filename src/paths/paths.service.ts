@@ -12,6 +12,7 @@ import { PathStatus } from './entities/path.entity';
 import { PathCalculationService } from './utils/path-calculation.service';
 import { AdvancedPathfindingService } from './utils/advanced-pathfinding.service';
 import { OSRMService } from './utils/osrm.service';
+import { TimeCalculationService } from './utils/time-calculation.service';
 import { PathResponseDto } from './dto/path-response.dto';
 import { PathPlaceResponseDto } from './dto/path-place-response.dto';
 import { PathsListResponseDto } from './dto/paths-list-response.dto';
@@ -32,6 +33,7 @@ export class PathsService {
     private pathCalculationService: PathCalculationService,
     private advancedPathfindingService: AdvancedPathfindingService,
     private osrmService: OSRMService,
+    private timeCalculationService: TimeCalculationService,
   ) {}
 
   // Helper method to convert Path entity to PathResponseDto
@@ -89,21 +91,23 @@ export class PathsService {
     // This could be added if needed
     dto.creator = path.creator ? this.mapUserToDto(path.creator) : null;
 
-    // Generate route geometry using OSRM
-    dto.geometry = await this.generateRouteGeometry(path);
+    // Generate route geometry and steps using OSRM
+    const { geometry, steps } = await this.generateRouteGeometry(path);
+    dto.geometry = geometry;
+    dto.steps = steps;
 
     return dto;
   }
 
   /**
-   * Generate route geometry using OSRM
+   * Generate route geometry and steps using OSRM
    */
-  private async generateRouteGeometry(path: Path): Promise<{ type: 'LineString'; coordinates: number[][] } | null> {
+  private async generateRouteGeometry(path: Path): Promise<{ geometry: { type: 'LineString'; coordinates: number[][] } | null; steps: any[] | null }> {
     try {
       // Extract coordinates from path places
       if (!path.pathPlaces || path.pathPlaces.length < 2) {
         this.logger.warn(`Path ${path.id} has less than 2 places, cannot generate geometry`);
-        return null;
+        return { geometry: null, steps: null };
       }
 
       // Sort places by order
@@ -120,17 +124,31 @@ export class PathsService {
 
       if (coordinates.length < 2) {
         this.logger.warn(`Path ${path.id} has insufficient valid coordinates`);
-        return null;
+        return { geometry: null, steps: null };
       }
 
       // Call OSRM to calculate route
       const route = await this.osrmService.calculateRoute(coordinates);
 
-      return route.geometry;
+      // Extract steps from OSRM response
+      const steps = route.legs?.flatMap(leg => 
+        leg.steps.map(step => ({
+          instruction: step.name || 'Continue',
+          distance: step.distance,
+          duration: step.duration,
+          maneuver: {
+            type: step.maneuver.type,
+            modifier: step.maneuver.modifier,
+            location: step.maneuver.location,
+          },
+        }))
+      ) || null;
+
+      return { geometry: route.geometry, steps };
     } catch (error) {
       this.logger.error(`Failed to generate geometry for path ${path.id}: ${error.message}`);
       // Return null instead of throwing to allow path to be returned without geometry
-      return null;
+      return { geometry: null, steps: null };
     }
   }
 
@@ -416,11 +434,170 @@ export class PathsService {
     return { message: 'Path deleted successfully', id };
   }
 
-  // Generate path algorithm with proper time and distance calculations
-  async generatePath(generatePathDto: GeneratePathDto) {
-    this.logger.log('Generating path based on criteria');
+  /**
+   * Select optimal places using greedy nearest-neighbor algorithm
+   * considering time and distance constraints
+   */
+  private async selectOptimalPlaces(
+    allPlaces: Place[],
+    criteria: {
+      startPlaceId?: string;
+      endPlaceId?: string;
+      startLatitude?: number;
+      startLongitude?: number;
+      maxPlaces: number;
+      maxDistance: number;
+      walkingSpeed: number;
+      totalTime: number;
+    },
+  ): Promise<Place[]> {
+    const selectedPlaces: Place[] = [];
+    const remainingPlaces = [...allPlaces];
+    let totalDistance = 0;
+    
+    // Start point
+    let currentLat: number;
+    let currentLng: number;
+    
+    if (criteria.startPlaceId) {
+      const startPlace = remainingPlaces.find(p => p.id === criteria.startPlaceId);
+      if (startPlace) {
+        selectedPlaces.push(startPlace);
+        const coords = this.pathCalculationService.getCoordinatesFromPlace(startPlace);
+        currentLat = coords.latitude;
+        currentLng = coords.longitude;
+        remainingPlaces.splice(remainingPlaces.indexOf(startPlace), 1);
+      }
+    } else if (criteria.startLatitude && criteria.startLongitude) {
+      currentLat = criteria.startLatitude;
+      currentLng = criteria.startLongitude;
+    } else {
+      throw new BadRequestException('Start point must be specified');
+    }
+    
+    // Greedy algorithm: repeatedly add nearest place that fits constraints
+    while (remainingPlaces.length > 0 && selectedPlaces.length < criteria.maxPlaces) {
+      let nearestPlace: Place | null = null;
+      let nearestDistance = Infinity;
+      
+      // Find nearest place
+      for (const place of remainingPlaces) {
+        const coords = this.pathCalculationService.getCoordinatesFromPlace(place);
+        const distance = this.pathCalculationService.calculateDistance(
+          { latitude: currentLat, longitude: currentLng },
+          coords,
+        );
+        
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearestPlace = place;
+        }
+      }
+      
+      if (!nearestPlace) break;
+      
+      // Check if adding this place exceeds constraints
+      const potentialTotalDistance = totalDistance + nearestDistance;
+      
+      // Check distance constraint
+      if (potentialTotalDistance > criteria.maxDistance) {
+        this.logger.log(`Stopping: distance limit reached (${potentialTotalDistance.toFixed(2)} > ${criteria.maxDistance})`);
+        break;
+      }
+      
+      // Check time constraint
+      const walkingTime = this.timeCalculationService.calculateWalkingTime(
+        potentialTotalDistance,
+        criteria.walkingSpeed,
+      );
+      const timeAtPlaces = (selectedPlaces.length + 1) * 15; // 15 min per place
+      const totalTime = walkingTime + timeAtPlaces + 15; // +15 buffer
+      
+      if (totalTime > criteria.totalTime) {
+        this.logger.log(`Stopping: time limit reached (${totalTime} > ${criteria.totalTime})`);
+        break;
+      }
+      
+      // Add place
+      selectedPlaces.push(nearestPlace);
+      totalDistance = potentialTotalDistance;
+      
+      const coords = this.pathCalculationService.getCoordinatesFromPlace(nearestPlace);
+      currentLat = coords.latitude;
+      currentLng = coords.longitude;
+      
+      remainingPlaces.splice(remainingPlaces.indexOf(nearestPlace), 1);
+    }
+    
+    // Add end place if specified and not already added
+    if (criteria.endPlaceId && criteria.endPlaceId !== criteria.startPlaceId) {
+      const endPlace = remainingPlaces.find(p => p.id === criteria.endPlaceId);
+      if (endPlace && !selectedPlaces.find(p => p.id === criteria.endPlaceId)) {
+        selectedPlaces.push(endPlace);
+      }
+    }
+    
+    this.logger.log(`Selected ${selectedPlaces.length} places, total distance: ${totalDistance.toFixed(2)} km`);
+    
+    if (selectedPlaces.length < 2) {
+      throw new BadRequestException('Could not find enough places within the given constraints');
+    }
+    
+    return selectedPlaces;
+  }
 
-    // Find places based on criteria (tags, duration, distance, etc.)
+  // Generate path algorithm with proper time and distance calculations
+  async generatePath(generatePathDto: GeneratePathDto, userId?: string) {
+    this.logger.log('Generating path based on new criteria', {
+      totalTime: generatePathDto.totalTime,
+      maxPlaces: generatePathDto.maxPlaces,
+      walkingSpeed: generatePathDto.walkingSpeed,
+      maxDistance: generatePathDto.maxDistance,
+    });
+
+    // Handle circular routes
+    let effectiveEndPlaceId = generatePathDto.endPlaceId;
+    let effectiveEndLatitude = generatePathDto.endLatitude;
+    let effectiveEndLongitude = generatePathDto.endLongitude;
+
+    if (generatePathDto.isCircular) {
+      this.logger.log('Circular route requested');
+      effectiveEndPlaceId = generatePathDto.startPlaceId;
+      effectiveEndLatitude = generatePathDto.startLatitude;
+      effectiveEndLongitude = generatePathDto.startLongitude;
+    }
+
+    // Calculate constraints based on user input
+    const maxPlaces = generatePathDto.maxPlaces || 10; // Default 10 places
+    const timePerPlace = 15; // minutes
+    
+    // Calculate maximum walking time available
+    const maxWalkingTime = this.timeCalculationService.calculateMaxWalkingTime(
+      generatePathDto.totalTime,
+      maxPlaces,
+      timePerPlace,
+    );
+    
+    // Calculate maximum walking distance possible
+    const maxWalkingDistance = this.timeCalculationService.calculateMaxDistance(
+      maxWalkingTime,
+      generatePathDto.walkingSpeed,
+    );
+    
+    // Use the stricter constraint
+    const effectiveMaxDistance = Math.min(
+      generatePathDto.maxDistance,
+      maxWalkingDistance,
+    );
+    
+    this.logger.log('Calculated constraints', {
+      maxWalkingTime,
+      maxWalkingDistance,
+      effectiveMaxDistance,
+      maxPlaces,
+    });
+
+    // Find places based on criteria
     let queryBuilder = this.placeRepository.createQueryBuilder('place')
       .where('place.status = :status', { status: 'approved' });
 
@@ -428,86 +605,179 @@ export class PathsService {
       queryBuilder = queryBuilder.andWhere('place.tagIds && ARRAY[:...tags]', { tags: generatePathDto.tags });
     }
 
-    // Add logic to find places within a radius if coordinates are provided
+    // Find places within reasonable radius
+    const searchRadius = effectiveMaxDistance * 1000; // Convert km to meters
     if (generatePathDto.startLatitude !== undefined && generatePathDto.startLongitude !== undefined) {
       queryBuilder = queryBuilder.andWhere(
-        'ST_DWithin(place.coordinates, ST_Point(:startLongitude, :startLatitude)::geography, 5000)', // 5km radius
-        { startLongitude: generatePathDto.startLongitude, startLatitude: generatePathDto.startLatitude }
+        'ST_DWithin(place.coordinates, ST_Point(:startLongitude, :startLatitude)::geography, :radius)',
+        { 
+          startLongitude: generatePathDto.startLongitude, 
+          startLatitude: generatePathDto.startLatitude,
+          radius: searchRadius,
+        }
       );
     }
 
     const allPotentialPlaces = await queryBuilder.getMany();
 
-    if (allPotentialPlaces.length < 2) {
-      throw new BadRequestException('Not enough places found matching your criteria to create a path');
+    if (allPotentialPlaces.length === 0) {
+      throw new BadRequestException('No places found matching your criteria');
     }
 
-    // Use the advanced pathfinding service to optimize the path sequence
-    let optimizedPlaces = await this.advancedPathfindingService.findOptimalPathSequence(
+    // Select optimal places using new algorithm
+    let optimizedPlaces = await this.selectOptimalPlaces(
       allPotentialPlaces,
-      generatePathDto.startPlaceId,
-      generatePathDto.endPlaceId,
-      generatePathDto.maxDuration,
-      generatePathDto.maxDistance
+      {
+        startPlaceId: generatePathDto.startPlaceId,
+        endPlaceId: effectiveEndPlaceId,
+        startLatitude: generatePathDto.startLatitude,
+        startLongitude: generatePathDto.startLongitude,
+        maxPlaces,
+        maxDistance: effectiveMaxDistance,
+        walkingSpeed: generatePathDto.walkingSpeed,
+        totalTime: generatePathDto.totalTime,
+      },
     );
 
-    // Limit to 10 places if needed
-    optimizedPlaces = optimizedPlaces.slice(0, 10);
+    this.logger.log(`Optimized to ${optimizedPlaces.length} places`);
 
-    // Create path-place relationships with proper calculations
+    // Check if we have enough places to build a route
+    if (optimizedPlaces.length < 2) {
+      throw new BadRequestException(
+        'Unable to generate route: not enough places found within the specified constraints. ' +
+        'Try increasing totalTime, maxDistance, or reducing maxPlaces.'
+      );
+    }
+
+    // Get route geometry and steps from OSRM
+    // Build coordinates array: start point → places → end point
+    const coordinates = [];
+    
+    // Add start point if provided as coordinates (not as place)
+    if (!generatePathDto.startPlaceId && 
+        generatePathDto.startLatitude !== undefined && 
+        generatePathDto.startLongitude !== undefined) {
+      coordinates.push({
+        longitude: generatePathDto.startLongitude,
+        latitude: generatePathDto.startLatitude,
+      });
+    }
+    
+    // Add all optimized places
+    optimizedPlaces.forEach(place => {
+      const coords = this.pathCalculationService.getCoordinatesFromPlace(place);
+      coordinates.push({ longitude: coords.longitude, latitude: coords.latitude });
+    });
+    
+    // Add end point if provided as coordinates (not as place) and not circular
+    if (!generatePathDto.isCircular && 
+        !effectiveEndPlaceId && 
+        effectiveEndLatitude !== undefined && 
+        effectiveEndLongitude !== undefined) {
+      coordinates.push({
+        longitude: effectiveEndLongitude,
+        latitude: effectiveEndLatitude,
+      });
+    }
+
+    this.logger.log('Requesting route from OSRM with coordinates', { 
+      count: coordinates.length,
+      hasStartPoint: !generatePathDto.startPlaceId && generatePathDto.startLatitude !== undefined,
+      hasEndPoint: !generatePathDto.isCircular && !effectiveEndPlaceId && effectiveEndLatitude !== undefined,
+    });
+
+    let osrmRoute;
+    try {
+      osrmRoute = await this.osrmService.calculateRoute(coordinates);
+    } catch (error) {
+      this.logger.error('OSRM routing failed', error);
+      throw new BadRequestException('Failed to generate route geometry');
+    }
+
+    // Calculate actual route metrics from OSRM
+    const actualDistance = osrmRoute.distance / 1000; // Convert meters to km
+    const actualWalkingTime = this.timeCalculationService.calculateWalkingTime(
+      actualDistance,
+      generatePathDto.walkingSpeed,
+    );
+    
+    // Calculate total time with place visits and buffer
+    const timeBreakdown = this.timeCalculationService.calculateTimeBreakdown({
+      distanceKm: actualDistance,
+      walkingSpeedKmh: generatePathDto.walkingSpeed,
+      numberOfPlaces: optimizedPlaces.length,
+      timePerPlaceMinutes: timePerPlace,
+    });
+
+    this.logger.log('Route metrics from OSRM', {
+      actualDistance,
+      actualWalkingTime,
+      timeBreakdown,
+    });
+
+    // Create path entity
     const path = new Path();
     path.name = generatePathDto.name || `Generated Path - ${new Date().toISOString()}`;
-    path.description = generatePathDto.description || 'Auto-generated path';
+    path.description = generatePathDto.description || 'Auto-generated walking path';
     path.status = PathStatus.DRAFT;
-
-    // Calculate pedestrian-aware distances and times
-    const timeAtPlaces = optimizedPlaces.map(() => 60); // Default time at each place
-    const { totalDistance, totalTime } = await this.advancedPathfindingService.calculatePedestrianPathMetrics(optimizedPlaces, timeAtPlaces);
-
-    path.distance = totalDistance;
-    path.totalTime = totalTime;
+    path.distance = actualDistance;
+    path.totalTime = timeBreakdown.totalTime;
+    path.isCircular = generatePathDto.isCircular || false;
+    path.geometry = osrmRoute.geometry;
+    path.steps = osrmRoute.steps;
+    
+    if (userId) {
+      path.creatorId = userId;
+    }
 
     const savedPath = await this.pathRepository.save(path);
+    this.logger.log(`Path saved with ID: ${savedPath.id}`);
 
-    // Create path places with calculated distances and times
-    const pathPlacePromises = optimizedPlaces.map(async (place, index) => {
+    // Create path-place relationships
+    const pathPlaces: PathPlace[] = [];
+    for (let i = 0; i < optimizedPlaces.length; i++) {
       const pathPlace = new PathPlace();
       pathPlace.pathId = savedPath.id;
-      pathPlace.placeId = place.id;
-      pathPlace.order = index;
-      pathPlace.timeAtPlace = 60; // Default time at place
+      pathPlace.placeId = optimizedPlaces[i].id;
+      pathPlace.order = i;
+      pathPlace.timeSpent = timePerPlace; // 15 minutes per place
 
-      // Calculate travel time from previous place if not the first
-      if (index > 0) {
-        const prevPlace = optimizedPlaces[index - 1];
-        const currPlace = optimizedPlaces[index];
-
-        if (prevPlace && currPlace) {
-          const prevCoords = this.pathCalculationService.getCoordinatesFromPlace(prevPlace);
-          const currCoords = this.pathCalculationService.getCoordinatesFromPlace(currPlace);
-
-          // Use pedestrian-aware distance calculation
-          const distance = await this.advancedPathfindingService.calculateWalkingDistance(prevCoords, currCoords);
-          const travelTime = this.advancedPathfindingService.estimateWalkingTime(distance);
-
-          pathPlace.distanceFromPrevious = distance;
-          pathPlace.travelTimeFromPrevious = travelTime;
-        }
+      // Calculate distance and time from previous place
+      if (i > 0 && osrmRoute.legs && osrmRoute.legs[i - 1]) {
+        const leg = osrmRoute.legs[i - 1];
+        pathPlace.distanceFromPrevious = leg.distance / 1000; // meters to km
+        pathPlace.travelTimeFromPrevious = this.timeCalculationService.calculateWalkingTime(
+          pathPlace.distanceFromPrevious,
+          generatePathDto.walkingSpeed,
+        );
       } else {
         pathPlace.distanceFromPrevious = 0;
         pathPlace.travelTimeFromPrevious = 0;
       }
 
-      return pathPlace;
+      pathPlaces.push(pathPlace);
+    }
+
+    await this.pathPlaceRepository.save(pathPlaces);
+    this.logger.log(`Saved ${pathPlaces.length} path-place relationships`);
+
+    // Return the complete path with all relations
+    const completePath = await this.pathRepository.findOne({
+      where: { id: savedPath.id },
+      relations: ['pathPlaces', 'pathPlaces.place', 'pathPlaces.place.tags', 'creator'],
     });
 
-    const updatedPathPlaces = await Promise.all(pathPlacePromises);
+    if (!completePath) {
+      throw new NotFoundException('Path was created but could not be retrieved');
+    }
 
-    // Update the path places in the database
-    await this.pathPlaceRepository.delete({ pathId: savedPath.id });
-    await this.pathPlaceRepository.save(updatedPathPlaces);
+    this.logger.log('Path generation completed successfully', {
+      pathId: completePath.id,
+      places: completePath.pathPlaces.length,
+      distance: completePath.distance,
+      totalTime: completePath.totalTime,
+    });
 
-    // Reload the path with updated path places
-    return await this.getPathById(savedPath.id);
+    return completePath;
   }
 }

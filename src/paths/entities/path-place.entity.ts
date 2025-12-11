@@ -25,6 +25,9 @@ export class PathPlace {
   @Column({ type: 'int', nullable: true }) // Estimated time spent at this place (in minutes)
   timeAtPlace: number;
 
+  @Column({ type: 'int', nullable: true }) // Time spent at this place (in minutes) - alias for timeAtPlace
+  timeSpent: number;
+
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true }) // Distance from previous place (in km)
   distanceFromPrevious: number;
 

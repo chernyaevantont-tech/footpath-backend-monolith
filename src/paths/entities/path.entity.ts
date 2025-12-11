@@ -32,6 +32,15 @@ export class Path {
   })
   status: PathStatus;
 
+  @Column({ type: 'boolean', default: false })
+  isCircular: boolean;
+
+  @Column({ type: 'jsonb', nullable: true })
+  geometry: any; // GeoJSON geometry from OSRM
+
+  @Column({ type: 'jsonb', nullable: true })
+  steps: any; // Navigation steps from OSRM
+
   @Column({ nullable: true })
   creatorId: string;
 

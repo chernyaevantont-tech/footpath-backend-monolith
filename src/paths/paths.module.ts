@@ -6,6 +6,7 @@ import { PathsService } from './paths.service';
 import { PathCalculationService } from './utils/path-calculation.service';
 import { AdvancedPathfindingService } from './utils/advanced-pathfinding.service';
 import { OSRMService } from './utils/osrm.service';
+import { TimeCalculationService } from './utils/time-calculation.service';
 import { Path } from './entities/path.entity';
 import { PathPlace } from './entities/path-place.entity';
 import { Place } from '../places/entities/place.entity';
@@ -21,6 +22,7 @@ import { Place } from '../places/entities/place.entity';
     PathCalculationService,
     AdvancedPathfindingService,
     OSRMService,
+    TimeCalculationService,
   ],
   exports: [PathsService],
 })

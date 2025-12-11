@@ -60,7 +60,18 @@ export class PathCalculationService {
    * @returns Coordinates object
    */
   getCoordinatesFromPlace(place: Place): Coordinates {
-    // Extract coordinates from PostGIS POINT format: "POINT(longitude latitude)"
+    // Handle GeoJSON format from ST_AsGeoJSON (returned as JSON object)
+    if (place.coordinates !== null && typeof place.coordinates === 'object') {
+      const coords = place.coordinates as any;
+      if ('type' in coords && 'coordinates' in coords && Array.isArray(coords.coordinates) && coords.coordinates.length === 2) {
+        return {
+          longitude: coords.coordinates[0],
+          latitude: coords.coordinates[1]
+        };
+      }
+    }
+    
+    // Fallback: Extract coordinates from PostGIS WKT POINT format: "POINT(longitude latitude)"
     if (typeof place.coordinates === 'string') {
       const match = place.coordinates.match(/POINT\(([-+]?\d*\.?\d+)\s([-+]?\d*\.?\d+)\)/);
       if (match) {
@@ -69,6 +80,7 @@ export class PathCalculationService {
         return { latitude, longitude };
       }
     }
+    
     throw new Error(`Could not extract coordinates from place ${place.id}`);
   }
 

@@ -6,6 +6,25 @@ export interface OSRMCoordinate {
   latitude: number;
 }
 
+export interface OSRMManeuver {
+  type: string;
+  modifier?: string;
+  location: [number, number];
+}
+
+export interface OSRMStep {
+  distance: number;
+  duration: number;
+  name: string;
+  maneuver: OSRMManeuver;
+}
+
+export interface OSRMLeg {
+  steps: OSRMStep[];
+  distance: number;
+  duration: number;
+}
+
 export interface OSRMRoute {
   distance: number; // meters
   duration: number; // seconds
@@ -13,6 +32,7 @@ export interface OSRMRoute {
     type: 'LineString';
     coordinates: number[][]; // [longitude, latitude][]
   };
+  legs?: OSRMLeg[];
 }
 
 export interface OSRMResponse {
@@ -48,7 +68,7 @@ export class OSRMService {
       .map(coord => `${coord.longitude},${coord.latitude}`)
       .join(';');
 
-    const url = `${this.osrmUrl}/route/v1/foot/${coordinatesString}?overview=full&geometries=geojson&steps=false`;
+    const url = `${this.osrmUrl}/route/v1/foot/${coordinatesString}?overview=full&geometries=geojson&steps=true&annotations=true`;
 
     this.logger.log(`Requesting OSRM route: ${url}`);
 

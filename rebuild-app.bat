@@ -1,0 +1,13 @@
+@echo off
+echo Rebuilding application...
+docker-compose build app
+echo.
+echo Restarting application...
+docker-compose up -d app
+echo.
+echo Waiting for app to start...
+timeout /t 5 /nobreak >nul
+echo.
+echo Checking logs...
+docker-compose logs app --tail=30
+pause

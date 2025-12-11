@@ -45,6 +45,12 @@ export class PathResponseDto {
   status: PathStatus;
 
   @ApiProperty({
+    example: false,
+    description: 'Whether the path is circular (returns to start)',
+  })
+  isCircular: boolean;
+
+  @ApiProperty({
     example: 'a1b2c3d4-e5f6-7890-1234-567890abcdef',
     description: 'ID of the user who created the path',
     nullable: true,
@@ -91,4 +97,34 @@ export class PathResponseDto {
     type: 'LineString';
     coordinates: number[][];
   } | null;
+
+  @ApiProperty({
+    example: [
+      {
+        instruction: 'Head north on Main Street',
+        distance: 150,
+        duration: 120,
+        maneuver: {
+          type: 'turn',
+          modifier: 'left',
+          location: [37.6173, 55.7558],
+        },
+      },
+    ],
+    description: 'Step-by-step navigation instructions',
+    nullable: true,
+    required: false,
+  })
+  steps?: NavigationStep[] | null;
+}
+
+export interface NavigationStep {
+  instruction: string;
+  distance: number;
+  duration: number;
+  maneuver: {
+    type: string;
+    modifier?: string;
+    location: [number, number];
+  };
 }

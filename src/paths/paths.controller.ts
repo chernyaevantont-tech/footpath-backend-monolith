@@ -59,9 +59,9 @@ export class PathsController {
     type: PathResponseDto
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async generatePath(@Body() generatePathDto: GeneratePathDto) {
+  async generatePath(@Body() generatePathDto: GeneratePathDto, @Request() req) {
     this.logger.log('Generating new path based on criteria');
-    return await this.pathsService.generatePath(generatePathDto);
+    return await this.pathsService.generatePath(generatePathDto, req.user.userId);
   }
 
   @UseGuards(JwtAuthGuard)
