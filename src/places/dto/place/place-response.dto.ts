@@ -69,6 +69,13 @@ export class PlaceResponseDto {
   contentHash: string | null;
 
   @ApiProperty({
+    example: 'Poor quality image',
+    description: 'Reason for rejection (only present if status is rejected)',
+    nullable: true,
+  })
+  rejectionReason: string | null;
+
+  @ApiProperty({
     type: [TagResponseDto],
     description: 'List of tags associated with the place',
   })

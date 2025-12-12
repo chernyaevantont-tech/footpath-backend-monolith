@@ -47,6 +47,19 @@ export class PlacesService {
     dto.updatedAt = place.updatedAt;
     dto.contentHash = place.contentHash || null;
     
+    // Extract rejection reason from moderation logs if place is rejected
+    dto.rejectionReason = null;
+    if (place.status === PlaceStatus.REJECTED && place.moderationLogs && place.moderationLogs.length > 0) {
+      // Find the latest rejection log
+      const rejectionLog = place.moderationLogs
+        .filter(log => log.action === ModerationAction.REJECTED)
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+      
+      if (rejectionLog && rejectionLog.reason) {
+        dto.rejectionReason = rejectionLog.reason;
+      }
+    }
+    
     // Convert tags to DTOs
     dto.tags = place.tags?.map(tag => {
       const tagDto = new TagResponseDto();
@@ -139,7 +152,7 @@ export class PlacesService {
         // Return the complete place object
         const savedPlace = await this.placeRepository.findOne({
           where: { id: placeId },
-          relations: ['tags']
+          relations: ['tags', 'moderationLogs']
         });
 
         // Log the submission
@@ -168,9 +181,10 @@ export class PlacesService {
     this.logger.log('Finding places with filters', { filterDto, userId: user?.id, userRole: user?.role });
 
     try {
-      // Build query with filters - including relation to tags
+      // Build query with filters - including relation to tags and moderationLogs
       const queryBuilder = this.placeRepository.createQueryBuilder('place')
-        .leftJoinAndSelect('place.tags', 'tag');
+        .leftJoinAndSelect('place.tags', 'tag')
+        .leftJoinAndSelect('place.moderationLogs', 'moderationLog');
 
       // Apply name filter
       if (filterDto.name) {
@@ -413,7 +427,7 @@ export class PlacesService {
         // Return the updated place object
         const updatedPlace = await this.placeRepository.findOne({
           where: { id },
-          relations: ['tags']
+          relations: ['tags', 'moderationLogs']
         });
 
         // Log the update
@@ -484,7 +498,7 @@ export class PlacesService {
         // Return the updated place object
         const updatedPlace = await this.placeRepository.findOne({
           where: { id },
-          relations: ['tags']
+          relations: ['tags', 'moderationLogs']
         });
 
         // Log the update
@@ -511,7 +525,7 @@ export class PlacesService {
     try {
       const place = await this.placeRepository.findOne({
         where: { id },
-        relations: ['tags']
+        relations: ['tags', 'moderationLogs']
       });
 
       if (!place) {
@@ -521,7 +535,7 @@ export class PlacesService {
 
       place.status = PlaceStatus.APPROVED;
       place.moderatorId = moderatorId; // Track who approved it
-      const updatedPlace = await this.placeRepository.save(place);
+      await this.placeRepository.save(place);
 
       // Log the approval
       await this.logModerationAction(
@@ -530,6 +544,12 @@ export class PlacesService {
         ModerationAction.APPROVED,
         reason || 'Place approved'
       );
+
+      // Reload place with updated moderationLogs
+      const updatedPlace = await this.placeRepository.findOne({
+        where: { id },
+        relations: ['tags', 'moderationLogs']
+      });
 
       // Generate embedding for the place after approval
       try {
@@ -563,7 +583,7 @@ export class PlacesService {
     try {
       const place = await this.placeRepository.findOne({
         where: { id },
-        relations: ['tags']
+        relations: ['tags', 'moderationLogs']
       });
 
       if (!place) {
@@ -573,7 +593,7 @@ export class PlacesService {
 
       place.status = PlaceStatus.REJECTED;
       place.moderatorId = moderatorId; // Track who rejected it
-      const updatedPlace = await this.placeRepository.save(place);
+      await this.placeRepository.save(place);
 
       // Log the rejection
       await this.logModerationAction(
@@ -582,6 +602,12 @@ export class PlacesService {
         ModerationAction.REJECTED,
         reason || 'Place rejected'
       );
+
+      // Reload place with updated moderationLogs
+      const updatedPlace = await this.placeRepository.findOne({
+        where: { id },
+        relations: ['tags', 'moderationLogs']
+      });
 
       this.logger.log(`Successfully rejected place: ${place.id}`);
       return this.entityToDto(updatedPlace);
