@@ -6,9 +6,7 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { PlacesModule } from './places/places.module';
 import { PathsModule } from './paths/paths.module';
-import { FriendsModule } from './friends/friends.module';
 import { WalksModule } from './walks/walks.module';
-import { NotificationsModule } from './notifications/notifications.module';
 import { RecommendationsModule } from './recommendations/recommendations.module';
 
 @Module({
@@ -44,9 +42,7 @@ import { RecommendationsModule } from './recommendations/recommendations.module'
     AuthModule,
     PlacesModule,
     PathsModule,
-    FriendsModule,
     WalksModule,
-    NotificationsModule,
     RecommendationsModule,
   ],
   controllers: [AppController],

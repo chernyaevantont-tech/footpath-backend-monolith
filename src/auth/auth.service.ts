@@ -32,7 +32,7 @@ export class AuthService {
     const dto = new UserResponseDto();
     dto.id = user.id;
     dto.email = user.email;
-    dto.username = user.username;
+
     dto.role = user.role;
     dto.createdAt = user.createdAt;
     dto.updatedAt = user.updatedAt;
@@ -121,7 +121,7 @@ export class AuthService {
     return null;
   }
 
-  async updateProfile(userId: string, email: string, username?: string): Promise<UserResponseDto> {
+  async updateProfile(userId: string, email: string): Promise<UserResponseDto> {
     const user = await this.userRepository.findOne({ where: { id: userId } });
     if (!user) {
       throw new UnauthorizedException('User not found');
@@ -134,11 +134,6 @@ export class AuthService {
         throw new BadRequestException('Email is already taken by another user');
       }
       user.email = email;
-    }
-
-    // Update username if provided
-    if (username !== undefined) {
-      user.username = username;
     }
 
     const updatedUser = await this.userRepository.save(user);

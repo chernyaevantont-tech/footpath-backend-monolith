@@ -11,18 +11,6 @@ export class UserProfileDto {
   email: string;
 
   @ApiPropertyOptional({
-    example: 'johndoe',
-    description: 'Username for the user account (can be changed anytime, no uniqueness required)',
-    minLength: 3,
-    maxLength: 30,
-  })
-  @IsString()
-  @IsOptional()
-  @MinLength(3)
-  @MaxLength(30)
-  username?: string;
-
-  @ApiPropertyOptional({
     example: 'John Doe',
     description: 'Display name for the user account',
     minLength: 2,

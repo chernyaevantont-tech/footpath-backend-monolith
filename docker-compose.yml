@@ -13,9 +13,6 @@ services:
       - DB_USERNAME=postgres
       - DB_PASSWORD=postgres
       - DB_NAME=footpath
-      - NEO4J_URI=bolt://neo4j:7687
-      - NEO4J_USERNAME=neo4j
-      - NEO4J_PASSWORD=letmein123
       - OSRM_URL=http://osrm:5000
       - JWT_SECRET=your_jwt_secret_key_change_this_in_production
       - JWT_EXPIRES_IN=24h
@@ -24,11 +21,9 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      neo4j:
-        condition: service_healthy
       osrm:
         condition: service_started
-    entrypoint: ["/usr/local/bin/wait-for-it.sh", "-t", "60", "postgres:5432", "neo4j:7687", "--"]
+    entrypoint: ["/usr/local/bin/wait-for-it.sh", "-t", "60", "postgres:5432", "--"]
     command: ["/bin/sh", "-c", "npm run migration:run && node dist/main.js"]
 
   # PostgreSQL with PostGIS and pgvector
@@ -55,33 +50,6 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
-
-  # Neo4j for social graph
-  neo4j:
-    image: neo4j:5.11.0
-    ports:
-      - "7474:7474"
-      - "7687:7687"
-    environment:
-      - NEO4J_AUTH=neo4j/letmein123
-      - NEO4J_server_default__listen__address=0.0.0.0
-      - NEO4J_server_http_advertised__address=localhost:7474
-      - NEO4J_server_bolt_advertised__address=localhost:7687
-      - NEO4J_server_jvm_additional=-Dunsupported.dbms.udc.source=docker
-    volumes:
-      - neo4j_data:/data
-      - neo4j_logs:/logs
-      - neo4j_import:/import
-      - neo4j_plugins:/plugins
-    healthcheck:
-      test: ["CMD-SHELL", "cypher-shell -u neo4j -p letmein123 'MATCH (n) RETURN count(n) LIMIT 1;' || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 20  # Increased retries for proper startup
-      start_period: 60s
-    restart: on-failure:5  # Limit restart attempts to avoid infinite loops
-    stop_signal: SIGINT
-    stop_grace_period: 30s
 
   # OSRM for route calculation (Russia ONLY)
   # Auto-downloads and prepares map data on first run (~3.5GB, takes 30-60 minutes)
@@ -116,8 +84,4 @@ services:
 
 volumes:
   postgres_data:
-  neo4j_data:
-  neo4j_logs:
-  neo4j_import:
-  neo4j_plugins:
   osrm_data:

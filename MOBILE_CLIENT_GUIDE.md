@@ -28,17 +28,11 @@ This document provides comprehensive guidance for developing a mobile client for
 - **User credentials** stored in Android Keystore
 - **Room Database** for caching offline data:
   - Places (POIs)
-  - Friend connections
-  - Notifications
   - User profile data
 - **Data synchronization** between local and remote databases
 
 #### Backend Infrastructure
-The backend uses Redis for caching to improve performance:
-- **Session storage**: User session data is cached in Redis for faster authentication
-- **User profile caching**: User profile data is cached to reduce database queries
-- **API response caching**: Frequent API responses are cached to improve response times
-- **Session management**: JWT tokens are associated with session data in Redis for enhanced security and management
+The backend uses PostgreSQL with PostGIS for spatial queries.
 
 ## API Integration
 
@@ -139,30 +133,6 @@ The Place object returned by these APIs now includes:
 - `creatorId` - The ID of the user who proposed the place
 - `moderatorId` - The ID of the moderator who approved/rejected the place (null if pending)
 
-#### Friends APIs
-- `GET /friends` - Get list of friends
-  - Headers: `Authorization: Bearer <token>`
-  - Response: `{"data": [{"id": "string", "email": "string", "username": "string", "createdAt": "datetime"}], "count": "number"}`
-  - Error Codes: 401 (Unauthorized)
-
-- `POST /friends/requests` - Send friend request
-  - Headers: `Authorization: Bearer <token>`
-  - Request Body: `{"receiverId": "string"}`
-  - Response: `{"requestId": "string", "senderId": "string", "senderUsername": "string", "senderEmail": "string", "receiverId": "string", "status": "pending", "createdAt": "datetime"}`
-  - Error Codes: 401 (Unauthorized), 404 (User not found)
-
-- `POST /friends/requests/{id}/accept` - Accept/decline friend request
-  - Headers: `Authorization: Bearer <token>`
-  - Request Body: `{"status": "accepted|declined"}`
-  - Response: `{"id": "string", "senderId": "string", "senderUsername": "string", "senderEmail": "string", "receiverId": "string", "status": "accepted|declined", "createdAt": "datetime", "updatedAt": "datetime"}`
-  - Error Codes: 401 (Unauthorized), 404 (Request not found)
-
-- `DELETE /friends/{userId}` - Remove friend
-  - Headers: `Authorization: Bearer <token>`
-  - Response: `{"message": "Friend removed successfully"}`
-  - Error Codes: 401 (Unauthorized), 404 (Friend not found)
-
-
 #### Paths APIs
 - `POST /paths/generate` - Generate a path based on criteria
   - Headers: `Authorization: Bearer <token>`
@@ -222,12 +192,6 @@ The Place object returned by these APIs now includes:
   - Error Codes: 401 (Unauthorized), 404 (Walk not found or user does not have access)
   - Notes: Users can only access walks they created or in which they are participants (invited or confirmed)
 
-- `POST /walks/{id}/invite` - Invite friends to a walk
-  - Headers: `Authorization: Bearer <token>`
-  - Request Body: `{"userIds": ["string"]}`
-  - Response: `{"message": "Invitations sent", "invitations": [...]}`
-  - Error Codes: 401 (Unauthorized), 404 (Walk not found)
-
 - `POST /walks/{id}/respond` - Respond to a walk invitation (accept/decline)
   - Headers: `Authorization: Bearer <token>`
   - Request Body: `{"status": "accepted|declined"}`
@@ -243,29 +207,6 @@ The Place object returned by these APIs now includes:
   - Headers: `Authorization: Bearer <token>`
   - Response: `{"message": "Walk canceled"}`
   - Error Codes: 401 (Unauthorized), 404 (Walk not found)
-
-#### Notifications APIs
-- `GET /notifications` - Get user notifications
-  - Headers: `Authorization: Bearer <token>`
-  - Query Params: `?type=string&isRead=boolean&page=number&limit=number`
-  - Response: `{"data": [...], "meta": {"page": "number", "limit": "number", "total": "number", "pages": "number"}}`
-  - Error Codes: 401 (Unauthorized)
-
-- `POST /notifications/{id}/read` - Mark notification as read
-  - Headers: `Authorization: Bearer <token>`
-  - Response: `{"id": "string", "isRead": true, "readAt": "datetime"}`
-  - Error Codes: 401 (Unauthorized), 404 (Notification not found)
-
-- `POST /notifications/bulk-read` - Mark multiple notifications as read
-  - Headers: `Authorization: Bearer <token>`
-  - Request Body: `{"notificationIds": ["string"]}`
-  - Response: `{"message": "Notifications marked as read", "count": "number"}`
-  - Error Codes: 401 (Unauthorized)
-
-- `POST /notifications/mark-all-read` - Mark all notifications as read
-  - Headers: `Authorization: Bearer <token>`
-  - Response: `{"affected": "number"}`
-  - Error Codes: 401 (Unauthorized)
 
 #### Recommendations APIs
 - `GET /recommendations/places` - Get place recommendations
